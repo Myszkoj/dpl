@@ -1,0 +1,28 @@
+[TODO]:
+- EventStream<T> should replace Transmitter<T>
+- EventStream<T> should be derived from Singleton
+- EventStream<T> should have static function 'send' that will check if it exist and send event to all receivers.
+- EventStream<T> should selfdestruct when all receivers are detached.
+- EventDispatcher<T> should derive from Singleton.
+- EventDispatcher<T> should store event streams.
+
+/*
+	current DataPack overhead: 68B
+	24B	- Link base
+	4B	- flags
+	8B	- range
+	32B	- buffer {capacity, size, ptr}
+
+	target DataPack overhead: 32B
+	24B	- Link base
+	8B	- LightweighBuffer
+
+	struct DataPack::Label // 16B
+	{
+		Mask32<Flags>			flags;
+		uint32_t				bufferSize;
+		IndexRange<uint32_t>	transferRange;	
+	};
+
+	LightweightBuffer<T, DataPack::Label> buffer; // Buffer layout: [DataPack::Label(HEADER)][uint32_t(CAPACITY)][T(DATA)]
+*/

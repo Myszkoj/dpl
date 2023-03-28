@@ -1,0 +1,143 @@
+#pragma once
+
+
+#include "dpl_GeneralException.h" // TODO: remove
+#include <typeindex>
+#include <unordered_map>
+#include <any>
+
+
+// declarations
+namespace dpl
+{
+	class Multiton;
+
+	template<class T>
+	class Singleton;
+}
+
+// implementations
+namespace dpl
+{
+	/*
+		This class acts as a context for all singleton types.
+	*/
+	class Multiton
+	{
+	public: // friends
+		template<typename>
+		friend class Singleton;
+
+	private: // data
+		std::unordered_map<std::type_index, void*> m_singletonTypes;
+
+	public: // lifecycle
+		CLASS_CTOR		Multiton() = default;
+
+	private: // lifecycle
+		CLASS_CTOR		Multiton(			const Multiton& OTHER) = delete;
+		CLASS_CTOR		Multiton(			Multiton&&		other) = delete;
+		Multiton&		operator=(			const Multiton& OTHER) = delete;
+		Multiton&		operator=(			Multiton&&		other) = delete;
+
+	private: // functions
+		template<typename SingletonT>
+		void*			get()
+		{
+			auto it = m_singletonTypes.find(typeid(SingletonT));
+			if (it == m_singletonTypes.end()) return nullptr;
+			return it->second;
+		}
+
+		template<typename SingletonT>
+		void			register_instance(	SingletonT*		INSTANCE)
+		{
+			if (!m_singletonTypes.emplace(typeid(SingletonT), INSTANCE).second)
+			{
+				throw dpl::GeneralException(__FILE__, __LINE__, "Fail to register singleton. Given type already registered: ", typeid(SingletonT).name());
+			}
+		}
+
+		template<typename SingletonT>
+		void			unregister_instance(SingletonT*		INSTANCE)
+		{
+			auto it = m_singletonTypes.find(typeid(SingletonT));
+			if (it != m_singletonTypes.end())
+			{
+				if (it->second == INSTANCE)
+				{
+					m_singletonTypes.erase(it);
+					return;
+				}
+			}
+
+			throw dpl::GeneralException(__FILE__, __LINE__, "Fail to unregister singleton. Unknown type: %s", typeid(SingletonT).name());
+		}
+	};
+
+
+	/*
+		Assures that only one instance of the given type is created.
+		Note: In case of the DLL, class T should synchronize its resources with the multition.
+	*/
+	template<class T>
+	class Singleton
+	{
+	private: // data
+		static Singleton*	sm_instance;
+		Multiton*			m_owner;
+
+	protected: // lifecycle
+		CLASS_CTOR			Singleton(		Multiton&			multition)
+			: sm_instance(nullptr)
+			, m_owner(&multition)
+		{
+			multition.register_instance<T>(static_cast<T*>(this));
+			sm_instance = this;
+		}
+
+		CLASS_DTOR			~Singleton()
+		{
+			dpl::no_except([&]()
+			{
+				if (m_owner)
+				{
+					m_owner->unregister_instance();
+					sm_instance = nullptr;
+					m_owner		= nullptr;
+				}
+			});
+		}
+
+	private: // lifecycle
+		CLASS_CTOR			Singleton(		const Singleton&	OTHER) = delete;
+		CLASS_CTOR			Singleton(		Singleton&&			other) = delete;
+		Singleton&			operator=(		const Singleton&	OTHER) = delete;
+		Singleton&			operator=(		Singleton&&			other) = delete;
+
+	public: // functions
+		static inline T*	ptr()
+		{
+			return static_cast<T*>(sm_instance);
+		}
+
+		static inline T*	get()
+		{
+			return static_cast<T*>(sm_instance);
+		}
+
+		static inline T&	ref()
+		{
+			return static_cast<T&>(*sm_instance);
+		}
+
+	protected: // functions
+		static inline void	synchronize(	Multiton&			multition)
+		{
+			sm_instance = static_cast<Singleton<T>*>(multition.get<T>());
+		}
+	};
+
+	template<class T>
+	Singleton<T>*	Singleton<T>::sm_instance	= nullptr;
+}
