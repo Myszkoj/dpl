@@ -376,6 +376,9 @@ namespace dpl
 	template<typename... Ts>
 	concept all_types_unique			= dpl::TypeList<Ts...>::ALL_UNIQUE;
 
+	template<typename T, typename U>
+	concept is_same_as					= std::is_same_v<T, U>;
+
 	template<typename T, typename TYPE_LIST>
 	concept is_one_of					= dpl::is_TypeList<TYPE_LIST> && TYPE_LIST::template has_type<T>();
 

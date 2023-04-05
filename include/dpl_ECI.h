@@ -155,9 +155,65 @@ namespace dpl
 	public:		using Type	= void;
 	};
 
+
+	template<typename EntityT>
+	struct	ParentQuery
+	{
+		using Base					= std::conditional_t<has_Base<EntityT>, typename Base_of<EntityT>::type, void>;
+		using OwnParentTypes		= typename ParentList_of<EntityT>::type;
+		using InheritedParentTypes	= typename ParentQuery<Base>::AllParentTypes;
+
+		using AllParentTypes		= dpl::merge_t<	OwnParentTypes, 
+													InheritedParentTypes>;
+	};
+
+	template<>
+	struct	ParentQuery<void>
+	{
+		using AllParentTypes		= dpl::TypeList<>;
+	};
+
+
+	template<typename EntityT>
+	struct	ChildQuery
+	{
+		using Base					= std::conditional_t<has_Base<EntityT>, typename Base_of<EntityT>::type, void>;
+		using OwnChildTypes			= typename ChildList_of<EntityT>::type;
+		using InheritedChildTypes	= typename ChildQuery<Base>::AllChildTypes;
+
+		using AllChildTypes			= dpl::merge_t<	OwnChildTypes, 
+													InheritedChildTypes>;
+	};
+
+	template<>
+	struct	ChildQuery<void>
+	{
+		using AllChildTypes			= dpl::TypeList<>;
+	};
+
+
+	template<typename EntityT>
+	struct	ComponentQuery
+	{
+		using Base						= std::conditional_t<has_Base<EntityT>, typename Base_of<EntityT>::type, void>;
+		using OwnComponentTypes			= typename ComponentList_of<EntityT>::type;
+		using InheritedComponentTypes	= typename ComponentQuery<Base>::AllComponentTypes;
+
+		using AllComponentTypes			= dpl::merge_t<	OwnComponentTypes, 
+														InheritedComponentTypes>;
+	};
+
+	template<>
+	struct	ComponentQuery<void>
+	{
+		using AllComponentTypes = dpl::TypeList<>;
+	};
+
+
 	// Returns the entity type that serves as the root of the inheritance diagram to which EntityT belongs.
 	template<typename EntityT>
 	using	RootBase_of		= typename RootBaseQuery<EntityT>::Type;
+
 
 	template<typename ParentT, typename ChildT>
 	constexpr uint32_t		get_relation_ID()
@@ -519,7 +575,7 @@ namespace dpl
 	};
 }
 
-// child base				(internal)
+// Child interface			(internal)
 namespace dpl
 {
 	template<typename ParentT, typename ChildT>
@@ -544,37 +600,36 @@ namespace dpl
 		friend class	Child;
 
 	protected: // lifecycle
-		CLASS_CTOR				ChildBase() = default;
-		CLASS_CTOR				ChildBase(						ChildBase&&				other) noexcept = default;
-		ChildBase&				operator=(						ChildBase&&				other) noexcept = default;
-
-		ChildBase&				operator=(						dpl::Swap<ChildBase>	other)
-		{
-			MyBaseT::operator=(dpl::Swap<MyBaseT>(*other));
-			return *this;
-		}
+		CLASS_CTOR			ChildBase() = default;
+		CLASS_CTOR			ChildBase(			ChildBase&&				other) noexcept = default;
+		ChildBase&			operator=(			ChildBase&&				other) noexcept = default;
 
 	private: // lifecycle (deleted)
-		CLASS_CTOR				ChildBase(						const ChildBase&		OTHER) = delete;
-		ChildBase&				operator=(						const ChildBase&		OTHER) = delete;
+		CLASS_CTOR			ChildBase(			const ChildBase&		OTHER) = delete;
+		ChildBase&			operator=(			const ChildBase&		OTHER) = delete;
 
 	private: // functions
-		inline bool				has_parent() const
+		bool				has_parent() const
 		{
 			return MyBaseT::is_linked();
 		}
 
-		inline ParentT&			get_parent()
+		ParentT&			get_parent()
 		{
 			return *MyBaseT::other();
 		}
 
-		inline const ParentT&	get_parent() const
+		const ParentT&		get_parent() const
 		{
 			return *MyBaseT::other();
 		}
 
-		void					import_relation_from_binary(	std::istream&			stream)
+		void				save_parent(		std::ostream&			stream) const
+		{
+			Reference::save_to_binary_opt(MyBaseT::other(), stream);
+		}
+
+		void				load_parent(		std::istream&			stream)
 		{
 			MyBaseT::unlink(); //<-- Detach from previous parent.
 			const Reference REFERENCE(stream);
@@ -586,11 +641,6 @@ namespace dpl
 			{
 				dpl::Logger::ref().push_error("Fail to import relation. The specified parent could not be found: " + REFERENCE.name());
 			}
-		}
-
-		inline void				export_relation_to_binary(		std::ostream&			stream) const
-		{
-			Reference::save_to_binary_opt(MyBaseT::other(), stream);
 		}
 	};
 
@@ -621,37 +671,36 @@ namespace dpl
 		friend class	Child;
 
 	protected: // lifecycle
-		CLASS_CTOR				ChildBase() = default;
-		CLASS_CTOR				ChildBase(						ChildBase&&				other) noexcept = default;
-		ChildBase&				operator=(						ChildBase&&				other) noexcept = default;
-
-		ChildBase&				operator=(						dpl::Swap<ChildBase>	other)
-		{
-			MyMemberT::operator=(dpl::Swap<MyMemberT>(*other));
-			return *this;
-		}
+		CLASS_CTOR			ChildBase() = default;
+		CLASS_CTOR			ChildBase(			ChildBase&&				other) noexcept = default;
+		ChildBase&			operator=(			ChildBase&&				other) noexcept = default;
 
 	private: // lifecycle (deleted)
-		CLASS_CTOR				ChildBase(						const ChildBase&		OTHER) = delete;
-		ChildBase&				operator=(						const ChildBase&		OTHER) = delete;
+		CLASS_CTOR			ChildBase(			const ChildBase&		OTHER) = delete;
+		ChildBase&			operator=(			const ChildBase&		OTHER) = delete;
 
 	private: // functions
-		inline bool				has_parent() const
+		bool				has_parent() const
 		{
 			return MyMemberT::is_member();
 		}
 
-		inline ParentT&			get_parent()
+		ParentT&			get_parent()
 		{
 			return *MyMemberT::get_group();
 		}
 
-		inline const ParentT&	get_parent() const
+		const ParentT&		get_parent() const
 		{
 			return *MyMemberT::get_group();
 		}
 
-		inline void				import_relation_from_binary(	std::istream&			stream)
+		void				save_parent(		std::ostream&			stream) const
+		{
+			Reference::save_to_binary_opt(MyMemberT::get_group(), stream);
+		}
+
+		void				load_parent(		std::istream&			stream)
 		{
 			MyMemberT::detach();
 			const Reference REFERENCE(stream);
@@ -664,15 +713,72 @@ namespace dpl
 				dpl::Logger::ref().push_error("Fail to import relation. The specified parent could not be found: " + REFERENCE.name());
 			}
 		}
+	};
 
-		inline void				export_relation_to_binary(		std::ostream&			stream) const
+
+	template<typename ChildT, typename... ParentTn>
+	class	Child<ChildT, dpl::TypeList<ParentTn...>> : public ChildBase<ParentTn, ChildT, dpl::get_relation_between<ParentTn, ChildT>()>...
+	{
+	private: // subtypes
+		using	PARENT_TYPES	= dpl::TypeList<ParentTn...>;
+
+		template<dpl::is_one_of<PARENT_TYPES> ParentT>
+		using	BaseT			= ChildBase<ParentT, ChildT, dpl::get_relation_between<ParentT, ChildT>()>;
+
+	public: // lifecycle
+		CLASS_CTOR			Child() = default;
+		CLASS_CTOR			Child(						Child&&				other) noexcept = default;
+		Child&				operator=(					Child&&				other) noexcept = default;
+
+		Child&				operator= (					dpl::Swap<Child>	other)
 		{
-			Reference::save_to_binary_opt(MyMemberT::get_group(), stream);
+			(BaseT<ParentTn>::operator=(dpl::Swap<BaseT<ParentTn>>(*other)), ...);
+			return *this;
+		}
+
+	private: // lifecycle
+		CLASS_CTOR			Child(						const Child&		OTHER) = delete;
+		Child&				operator=(					const Child&		OTHER) = delete;
+
+	public: // functions
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		bool				has_parent() const
+		{
+			return BaseT<ParentT>::has_parent();
+		}
+
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		ParentT&			get_parent()
+		{
+			return BaseT<ParentT>::get_parent();
+		}
+
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		const ParentT&		get_parent() const
+		{
+			return BaseT<ParentT>::get_parent();
+		}
+
+		template<dpl::is_same_as<ChildT>		T = ChildT>
+		void				save_parents_of_this(		std::ostream&		stream) const
+		{
+			(BaseT<ParentTn>::save_parent(stream), ...);
+		}
+
+		template<dpl::is_same_as<ChildT>		T = ChildT>
+		void				load_parents_of_this(		std::istream&		stream)
+		{
+			(BaseT<ParentTn>::load_parent(stream), ...);
 		}
 	};
+
+
+	// Specialization for child without parents.
+	template<typename ChildT>
+	class	Child<ChildT, dpl::TypeList<>>{};
 }
 
-// parent base				(internal)
+// Parent interface			(internal)
 namespace dpl
 {
 	template<typename ParentT, typename ChildT>
@@ -701,113 +807,118 @@ namespace dpl
 		friend class	Child;
 
 	private: // lifecycle
-		CLASS_CTOR				ParentBase() = default;
-		CLASS_CTOR				ParentBase(						ParentBase&&				other) noexcept = default;
-		ParentBase&				operator=(						ParentBase&&				other) noexcept =default;
+		CLASS_CTOR			ParentBase() = default;
+		CLASS_CTOR			ParentBase(						ParentBase&&				other) noexcept = default;
+		ParentBase&			operator=(						ParentBase&&				other) noexcept =default;
 
-		ParentBase&				operator=(						dpl::Swap<ParentBase>		other)
+		ParentBase&			operator=(						dpl::Swap<ParentBase>		other)
 		{
 			MyBaseT::operator=(dpl::Swap<MyBaseT>(*other));
 			return *this;
 		}
 
 	private: // functions
-		inline bool				has_child() const
+		bool				has_child() const
 		{
 			return MyBaseT::is_linked();
 		}
 
-		inline bool				can_have_another_child() const
+		bool				can_have_another_child() const
 		{
 			return !has_child();
 		}
 
-		inline uint32_t			numChildren() const
+		uint32_t			numChildren() const
 		{
 			return has_child()? 1 : 0;
 		}
 
-		inline bool				add_child(						ChildT&						child)
+		bool				add_child(						ChildT&						child)
 		{
 			return MyBaseT::link(child);
 		}
 
-		inline bool				remove_child(					ChildT&						child)
+		bool				remove_child(					ChildT&						child)
 		{
 			if(MyBaseT::other() != &child) return false;
 			return MyBaseT::unlink();
 		}
 
-		inline bool				remove_all_children()
+		bool				remove_all_children()
 		{
 			return MyBaseT::unlink();
 		}
 
-		inline ChildT&			get_child()
+		ChildT&				get_child()
 		{
 			return *MyBaseT::other();
 		}
 
-		inline const ChildT&	get_child() const
+		const ChildT&		get_child() const
 		{
 			return *MyBaseT::other();
 		}
 
-		inline ChildT*			first_child()
+		ChildT*				first_child()
 		{
 			return MyBaseT::other();
 		}
 
-		inline const ChildT*	first_child() const
+		const ChildT*		first_child() const
 		{
 			return MyBaseT::other();
 		}
 
-		inline ChildT*			last_child()
+		ChildT*				last_child()
 		{
 			return MyBaseT::other();
 		}
 
-		inline const ChildT*	last_child() const
+		const ChildT*		last_child() const
 		{
 			return MyBaseT::other();
 		}
 
-		inline ChildT*			previous_child(					MyLinkT&						child)
+		ChildT*				previous_child(					MyLinkT&					child)
 		{
 			return nullptr;
 		}
 
-		inline const ChildT*	previous_child(					const MyLinkT&					CHILD) const
+		const ChildT*		previous_child(					const MyLinkT&				CHILD) const
 		{
 			return nullptr;
 		}
 
-		inline ChildT*			next_child(						MyLinkT&						child)
+		ChildT*				next_child(						MyLinkT&					child)
 		{
 			return nullptr;
 		}
 
-		inline const ChildT*	next_child(						const MyLinkT&					CHILD) const
+		const ChildT*		next_child(						const MyLinkT&				CHILD) const
 		{
 			return nullptr;
 		}
 
-		inline uint32_t			for_each_child(					const InvokeChild&				INVOKE_CHILD)
+		uint32_t			for_each_child(					const InvokeChild&			INVOKE_CHILD)
 		{
 			if(!has_child()) return 0;
 			INVOKE_CHILD(get_child());
 			return 1;
 		}
 
-		inline uint32_t			for_each_child(					const InvokeConstChild&			INVOKE_CHILD) const
+		uint32_t			for_each_child(					const InvokeConstChild&		INVOKE_CHILD) const
 		{
 			if(!has_child()) return 0;
 			INVOKE_CHILD(get_child());
 			return 1;
 		}
 
-		void					import_relation_from_binary(	std::istream&					stream)
+		void				save_children(					std::ostream&				stream) const
+		{
+			Reference::save_to_binary_opt(first_child(), stream);
+		}
+
+		void				load_children(					std::istream&				stream)
 		{
 			MyBaseT::unlink();
 			const Reference REFERENCE(stream);
@@ -819,11 +930,6 @@ namespace dpl
 			{
 				dpl::Logger::ref().push_error("Fail to import relation. The specified child could not be found: " + REFERENCE.name());
 			}
-		}
-
-		inline void				export_relation_to_binary(		std::ostream&					stream) const
-		{
-			Reference::save_to_binary_opt(first_child(), stream);
 		}
 	};
 
@@ -856,113 +962,113 @@ namespace dpl
 	private: // lifecycle
 		CLASS_CTOR				ParentBase() = default;
 
-		CLASS_CTOR				ParentBase(						ParentBase&&				other) noexcept = default;
+		CLASS_CTOR				ParentBase(					ParentBase&&				other) noexcept = default;
 
-		ParentBase&				operator=(						ParentBase&&				other) noexcept = default;
+		ParentBase&				operator=(					ParentBase&&				other) noexcept = default;
 
-		ParentBase&				operator=(						dpl::Swap<ParentBase>		other)
+		ParentBase&				operator=(					dpl::Swap<ParentBase>		other)
 		{
 			MyGroupT::operator=(dpl::Swap<MyGroupT>(*other));
 			return *this;
 		}
 
 	private: // functions
-		inline bool				has_child() const
+		bool					has_child() const
 		{
 			return MyGroupT::size() > 0;
 		}
 
-		inline bool				can_have_another_child() const
+		bool					can_have_another_child() const
 		{
 			return true;
 		}
 
-		inline uint32_t			numChildren() const
+		uint32_t				numChildren() const
 		{
 			return MyGroupT::size();
 		}
-
-		inline bool				add_child(						ChildT&						child)
+			
+		bool					add_child(					ChildT&						child)
 		{
 			// TEST type restrictions;
 			return MyGroupT::add_end_member(child);
 		}
 
-		inline bool				remove_child(					ChildT&						child)
+		bool					remove_child(				ChildT&						child)
 		{
 			return MyGroupT::remove_member(child);
 		}
 
-		inline bool				remove_all_children()
+		bool					remove_all_children()
 		{
 			return MyGroupT::remove_all_members();
 		}
 
-		inline ChildT&			get_child()
+		ChildT&					get_child()
 		{
 			return *MyGroupT::first();
 		}
 
-		inline const ChildT&	get_child() const
+		const ChildT&			get_child() const
 		{
 			return *MyGroupT::first();
 		}
 
-		inline ChildT*			first_child()
+		ChildT*					first_child()
 		{
 			return MyGroupT::first();
 		}
 
-		inline const ChildT*	first_child() const
+		const ChildT*			first_child() const
 		{
 			return MyGroupT::first();
 		}
 
-		inline ChildT*			last_child()
+		ChildT*					last_child()
 		{
 			return MyGroupT::last();
 		}
 
-		inline const ChildT*	last_child() const
+		const ChildT*			last_child() const
 		{
 			return MyGroupT::last();
 		}
 
-		inline ChildT*			previous_child(					MyMemberT&					child)
+		ChildT*					previous_child(				MyMemberT&					child)
 		{
 			if(!child.is_member_of(*this)) return nullptr;
 			return child.previous();
 		}
 			
-		inline const ChildT*	previous_child(					const MyMemberT&			CHILD) const
+		const ChildT*			previous_child(				const MyMemberT&			CHILD) const
 		{
 			if(!CHILD.is_member_of(*this)) return nullptr;
 			return CHILD.previous();
 		}
 
-		inline ChildT*			next_child(						MyMemberT&					child)
+		ChildT*					next_child(					MyMemberT&					child)
 		{
 			if(!child.is_member_of(*this)) return nullptr;
 			return child.next();
 		}
 
-		inline const ChildT*	next_child(						const MyMemberT&			CHILD) const
+		const ChildT*			next_child(					const MyMemberT&			CHILD) const
 		{
 			if(!CHILD.is_member_of(*this)) return nullptr;
 			return CHILD.next();
 		}
 
-		inline uint32_t			for_each_child(					const InvokeChild&			INVOKE_CHILD)
+		uint32_t				for_each_child(				const InvokeChild&			INVOKE_CHILD)
 		{
 			return MyGroupT::for_each_member(INVOKE_CHILD);
 		}
 
-		inline uint32_t			for_each_child(					const InvokeConstChild&		INVOKE_CHILD) const
+		uint32_t				for_each_child(				const InvokeConstChild&		INVOKE_CHILD) const
 		{
 			return MyGroupT::for_each_member(INVOKE_CHILD);
 		}
 
-		inline void				detach_children()
+		void					detach_children()
 		{
 			while(ChildBaseT* child = first_child())
 			{
@@ -971,7 +1077,16 @@ namespace dpl
 			}
 		}
 
-		void					import_relation_from_binary(	std::istream&				stream)
+		void					save_children(				std::ostream&				stream) const
+		{
+			dpl::export_t(stream, numChildren());
+			ParentBase::for_each_child([&](const ChildT& CHILD)
+			{
+				Reference::save_to_binary_opt(CHILD, stream);
+			});
+		}
+
+		void					load_children(				std::istream&				stream)
 		{
 			detach_children();
 			Reference reference;
@@ -990,84 +1105,9 @@ namespace dpl
 				}
 			}
 		}
-
-		void					export_relation_to_binary(		std::ostream&				stream) const
-		{
-			dpl::export_t(stream, numChildren());
-			ParentBase::for_each_child([&](const ChildT& CHILD)
-			{
-				Reference::save_to_binary_opt(CHILD, stream);
-			});
-		}
-	};
-}
-
-// Child interface			(internal)
-namespace dpl
-{
-	template<typename ChildT, typename... ParentTn>
-	class	Child<ChildT, dpl::TypeList<ParentTn...>> : public ChildBase<ParentTn, ChildT, dpl::get_relation_between<ParentTn, ChildT>()>...
-	{
-	private: // subtypes
-		using	PARENT_TYPES	= dpl::TypeList<ParentTn...>;
-
-		template<dpl::is_one_of<PARENT_TYPES> ParentT>
-		using	BaseT			= ChildBase<ParentT, ChildT, dpl::get_relation_between<ParentT, ChildT>()>;
-
-	public: // lifecycle
-		CLASS_CTOR				Child() = default;
-		CLASS_CTOR				Child(										Child&&				other) noexcept = default;
-		Child&					operator=(									Child&&				other) noexcept = default;
-
-		Child&					operator= (									dpl::Swap<Child>	other)
-		{
-			(BaseT<ParentTn>::operator=(dpl::Swap<BaseT<ParentTn>>(*other)), ...);
-			return *this;
-		}
-
-	private: // lifecycle
-		CLASS_CTOR				Child(										const Child&		OTHER) = delete;
-		Child&					operator=(									const Child&		OTHER) = delete;
-
-	public: // functions
-		template<dpl::is_one_of<PARENT_TYPES> ParentT>
-		inline bool				has_parent() const
-		{
-			return BaseT<ParentT>::has_parent();
-		}
-
-		template<dpl::is_one_of<PARENT_TYPES> ParentT>
-		inline ParentT&			get_parent()
-		{
-			return BaseT<ParentT>::get_parent();
-		}
-
-		template<dpl::is_one_of<PARENT_TYPES> ParentT>
-		inline const ParentT&	get_parent() const
-		{
-			return BaseT<ParentT>::get_parent();
-		}
-
-		inline void				import_relations_with_parents_from_binary(	std::istream&		stream)
-		{
-			(BaseT<ParentTn>::import_relation_from_binary(stream), ...);
-		}
-
-		inline void				export_relations_with_parents_to_binary(	std::ostream&		stream) const
-		{
-			(BaseT<ParentTn>::export_relation_to_binary(stream), ...);
-		}
 	};
 
 
-	// Specialization for child without parents.
-	template<typename ChildT>
-	class	Child<ChildT, dpl::TypeList<>>{};
-}
-
-// Parent interface			(internal)
-namespace dpl
-{
 	template<typename ParentT, typename... ChildTn>
 	class	Parent<ParentT, dpl::TypeList<ChildTn...>> : public ParentBase<ParentT, ChildTn, dpl::get_relation_between<ParentT, ChildTn>()>...
 	{
@@ -1089,141 +1129,144 @@ namespace dpl
 
 	protected: // lifecycle
 		CLASS_CTOR				Parent() = default;
-		CLASS_CTOR				Parent(										Parent&&					other) noexcept = default;
-		Parent&					operator=(									Parent&&					other) noexcept = default;
+		CLASS_CTOR				Parent(						Parent&&					other) noexcept = default;
+		Parent&					operator=(					Parent&&					other) noexcept = default;
 
-		Parent&					operator=(									dpl::Swap<Parent>			other)
+		Parent&					operator=(					dpl::Swap<Parent>			other)
 		{
 			(ParentBase_of<ChildTn>::operator=(dpl::Swap<ChildTn>(*other)), ...);
 			return *this;
 		}
 
 	private: // lifecycle
-		CLASS_CTOR				Parent(										const Parent&				OTHER) = delete;
-		Parent&					operator=(									const Parent&				OTHER) = delete;
+		CLASS_CTOR				Parent(						const Parent&				OTHER) = delete;
+		Parent&					operator=(					const Parent&				OTHER) = delete;
 
 	public: // functions
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline bool				has_child() const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		bool					has_child() const
 		{
 			return ParentBase_of<ChildT>::has_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline bool				can_have_another_child() const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		bool					can_have_another_child() const
 		{
 			return ParentBase_of<ChildT>::can_have_another_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline uint32_t			numChildren() const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		uint32_t				numChildren() const
 		{
 			return ParentBase_of<ChildT>::numChildren();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline bool				add_child(									ChildT&						child)
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		bool					add_child(					ChildT&						child)
 		{
 			return ParentBase_of<ChildT>::add_child(child);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline bool				remove_child(								ChildT&						child)
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		bool					remove_child(				ChildT&						child)
 		{
 			return ParentBase_of<ChildT>::remove_child(child);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline bool				remove_children_of_type()
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		bool					remove_children_of_type()
 		{
 			return ParentBase_of<ChildT>::remove_all_children();
 		}
 
-		inline void				remove_all_children()
+		template<dpl::is_same_as<ParentT>		This = ParentT>
+		void					remove_all_children_of_this()
 		{
 			(ParentBase_of<ChildTn>::remove_all_children(), ...);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline ChildT&			get_child()
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		ChildT&					get_child()
 		{
 			return ParentBase_of<ChildT>::get_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline const ChildT&	get_child() const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		const ChildT&			get_child() const
 		{
 			return ParentBase_of<ChildT>::get_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline ChildT*			first_child()
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		ChildT*					first_child()
 		{
 			return ParentBase_of<ChildT>::first_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline const ChildT*	first_child() const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		const ChildT*			first_child() const
 		{
 			return ParentBase_of<ChildT>::first_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline ChildT*			last_child()
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		ChildT*					last_child()
 		{
 			return ParentBase_of<ChildT>::last_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline const ChildT*	last_child() const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		const ChildT*			last_child() const
 		{
 			return ParentBase_of<ChildT>::last_child();
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline ChildT*			previous_child(								ChildT&						child)
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		ChildT*					previous_child(				ChildT&						child)
 		{
 			return ParentBase_of<ChildT>::previous_child(child);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline const ChildT*	previous_child(								const ChildT&				CHILD) const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		const ChildT*			previous_child(				const ChildT&				CHILD) const
 		{
 			return ParentBase_of<ChildT>::previous_child(CHILD);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline ChildT*			next_child(									ChildT&						child)
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		ChildT*					next_child(					ChildT&						child)
 		{
 			return ParentBase_of<ChildT>::next_child(child);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline const ChildT*	next_child(									const ChildT&				CHILD) const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		const ChildT*			next_child(					const ChildT&				CHILD) const
 		{
 			return ParentBase_of<ChildT>::next_child(CHILD);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline uint32_t			for_each_child(								const Invoke<ChildT>&		INVOKE_CHILD)
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		uint32_t				for_each_child(				const Invoke<ChildT>&		INVOKE_CHILD)
 		{
 			return ParentBase_of<ChildT>::for_each_child(INVOKE_CHILD);
 		}
 
-		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		inline uint32_t			for_each_child(								const InvokeConst<ChildT>&	INVOKE_CHILD) const
+		template<dpl::is_one_of<CHILD_TYPES>	ChildT>
+		uint32_t				for_each_child(				const InvokeConst<ChildT>&	INVOKE_CHILD) const
 		{
 			return ParentBase_of<ChildT>::for_each_child(INVOKE_CHILD);
 		}
 
-		inline void				import_relations_with_children_from_binary(	std::istream&				stream)
+		template<dpl::is_same_as<ParentT>		This = ParentT>
+		void					save_children_of_this(		std::ostream&				stream) const
 		{
-			(ParentBase_of<ChildTn>::import_relation_from_binary(stream), ...);
+			(ParentBase_of<ChildTn>::save_children(stream), ...);
 		}
 
-		inline void				export_relations_with_children_to_binary(	std::ostream&				stream) const
+		template<dpl::is_same_as<ParentT>		This = ParentT>
+		void					load_children_of_this(		std::istream&				stream)
 		{
-			(ParentBase_of<ChildTn>::export_relation_to_binary(stream), ...);
+			(ParentBase_of<ChildTn>::load_children(stream), ...);
 		}
 	};
 
@@ -1233,51 +1276,659 @@ namespace dpl
 	class	Parent<ParentT, dpl::TypeList<>>{};
 }
 
-// maybe related			(internal, Entity base)
+// using-overloading hack
 namespace dpl
 {
-	template<typename EntityT>
-	class	Related	: public Child<EntityT, typename ParentList_of<EntityT>::type>
-					, public Parent<EntityT, typename ChildList_of<EntityT>::type>
+	template<typename T>
+	concept is_Real		= std::is_floating_point_v<T>;
+
+	template<typename T>
+	concept is_Integer	= std::is_integral_v<T>;
+
+	template<typename T>
+	concept not_Numeric = !is_Real<T> && !is_Integer<T>;
+
+
+	struct RealHandler
 	{
-	private: // subtypes
-		using	MyChildBase		= Child<EntityT, typename ParentList_of<EntityT>::type>;
-		using	MyParentBase	= Parent<EntityT, typename ChildList_of<EntityT>::type>;
-
-	public: // friends
-		template<typename>
-		friend	class EntityPack_of;
-
-	public: // lifecycle
-		CLASS_CTOR			Related() = default;
-
-		CLASS_CTOR			Related(							Related&&			other) noexcept = default;
-		Related&			operator=(							Related&&			other) noexcept = default;
-
-	private: // lifecycle(deleted)
-		CLASS_CTOR			Related(							const Related&		OTHER) = delete;
-		Related&			operator=(							const Related&		OTHER) = delete;
-
-	public: // functions
-		inline void			import_all_relations_from_binary(	std::istream&		stream)
+		template<is_Real T>
+		void do_something()
 		{
-			MyChildBase::import_relations_with_parents_from_binary(stream);
-			MyParentBase::import_relations_with_children_from_binary(stream);
+
 		}
+	};
 
-		inline void			export_all_relations_to_binary(		std::ostream&		stream) const
+	struct IntegerHandler
+	{
+		template<is_Integer T>
+		void do_something()
 		{
-			MyChildBase::export_relations_with_parents_to_binary(stream);
-			MyParentBase::export_relations_with_children_to_binary(stream);
+
+		}
+	};
+
+	struct NotNumericHandler
+	{
+		template<not_Numeric T>
+		void do_something()
+		{
+
 		}
 	};
 
 
-	struct	NotRelated{};
+	struct AnyHandler	: private RealHandler
+						, private IntegerHandler
+						, private NotNumericHandler
+	{
+		using RealHandler::do_something;
+		using IntegerHandler::do_something;
+		using NotNumericHandler::do_something;
+	};
+
+	struct MyBase : public RealHandler
+	{
+
+	};
+
+	struct MyDerived	: private MyBase
+						, public IntegerHandler
+	{
+		using MyBase::do_something;
+		using IntegerHandler::do_something;
+	};
+
+	struct MyDerived2	: private MyDerived
+						, public NotNumericHandler
+	{
+		using MyDerived::do_something;
+		using NotNumericHandler::do_something;
+	};
+
+
+	void test_fake_overloading()
+	{
+		AnyHandler	any;
+					any.do_something<float>();
+					any.do_something<int>();
+					any.do_something<std::string>();
+
+		MyDerived2	obj;
+					obj.do_something<float>();
+					obj.do_something<int>();
+					obj.do_something<std::string>();
+	}
+}
+
+// Related 					(internal, Parent/Child wrapper)
+namespace dpl
+{
+	template<typename EntityT>
+	using	MaybeIdentified = std::conditional_t<!has_Base<EntityT>, Identity, typename Base_of<EntityT>::type>;
+
+	template<typename EntityT>
+	using	InheritedParentTypes_of	= typename ParentQuery<EntityT>::InheritedParentTypes;
+
+	template<typename EntityT>
+	using	InheritedChildTypes_of	= typename ChildQuery<EntityT>::InheritedChildTypes;
+
+	template<typename EntityT>
+	using	AllParentTypes_of		= typename ParentQuery<EntityT>::AllParentTypes;
+
+	template<typename EntityT>
+	using	AllChildTypes_of		= typename ChildQuery<EntityT>::AllChildTypes;
 
 
 	template<typename EntityT>
-	using	MaybeRelated = std::conditional_t<!has_Base<EntityT>, Related<EntityT>, NotRelated>;
+	concept has_OwnParentList		= ParentList_of<EntityT>::SIZE > 0;
+
+	template<typename EntityT>
+	concept has_OwnChildList		= ChildList_of<EntityT>::SIZE > 0;
+
+
+	template<typename EntityT>
+	concept needs_ChildOverloading	= has_OwnParentList<EntityT> && (InheritedParentTypes_of<EntityT>::SIZE > 0);
+
+	template<typename EntityT>
+	concept needs_ParentOverloading	= has_OwnChildList<EntityT> && (InheritedChildTypes_of<EntityT>::SIZE > 0);
+
+
+	template<typename EntityT, bool NEEDS_CHILD_OVERLOADING, bool NEEDS_PARENT_OVERLOADING>
+	class	Related;
+
+
+	template<typename EntityT>
+	class	Related<EntityT, false, false>	: public	MaybeIdentified<EntityT>
+											, public	Child<EntityT, typename ParentList_of<EntityT>::type>
+											, public	Parent<EntityT, typename ChildList_of<EntityT>::type>
+	{
+	private: // subtypes
+		using	MyIdentity		= MaybeIdentified<EntityT>;
+		using	MyChildBase		= Child<EntityT, typename ParentList_of<EntityT>::type>;
+		using	MyParentBase	= Parent<EntityT, typename ChildList_of<EntityT>::type>;
+
+	public: // inherited members
+		using	MyIdentity::MyIdentity;
+
+	public: // lifecycle
+		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
+		Related&			operator=(				Related&&			other) noexcept = default;
+
+	private: // lifecycle (deleted)
+		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
+		Related&			operator=(				const Related&		OTHER) = delete;
+
+	public: // functions
+		void				save_all_relations(		std::ostream&		stream) const
+		{
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(stream);
+		}
+
+		void				load_all_relations(		std::istream&		stream)
+		{
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(stream);
+		}
+	};
+
+
+	template<typename EntityT>
+	class	Related<EntityT, true, true>	: public	MaybeIdentified<EntityT>
+											, public	Child<EntityT, typename ParentList_of<EntityT>::type>
+											, public	Parent<EntityT, typename ChildList_of<EntityT>::type>
+	{
+	private: // subtypes
+		using	MyIdentity		= MaybeIdentified<EntityT>;
+		using	MyChildBase		= Child<EntityT, typename ParentList_of<EntityT>::type>;
+		using	MyParentBase	= Parent<EntityT, typename ChildList_of<EntityT>::type>;
+
+	public: // inherited members (overloading hack)
+		using	MyIdentity::MyIdentity;
+		using	MyIdentity::has_child;
+		using	MyIdentity::can_have_another_child;
+		using	MyIdentity::numChildren;
+		using	MyIdentity::add_child;
+		using	MyIdentity::remove_child;
+		using	MyIdentity::remove_children_of_type;
+		using	MyIdentity::get_child;
+		using	MyIdentity::first_child;
+		using	MyIdentity::last_child;
+		using	MyIdentity::previous_child;
+		using	MyIdentity::next_child;
+		using	MyIdentity::for_each_child;
+		using	MyIdentity::save_children_of_this;
+		using	MyIdentity::load_children_of_this;
+		using	MyParentBase::has_child;
+		using	MyParentBase::can_have_another_child;
+		using	MyParentBase::numChildren;
+		using	MyParentBase::add_child;
+		using	MyParentBase::remove_child;
+		using	MyParentBase::remove_children_of_type;
+		using	MyParentBase::get_child;
+		using	MyParentBase::first_child;
+		using	MyParentBase::last_child;
+		using	MyParentBase::previous_child;
+		using	MyParentBase::next_child;
+		using	MyParentBase::for_each_child;
+		using	MyParentBase::save_children_of_this;
+		using	MyParentBase::load_children_of_this;
+		using	MyIdentity::has_parent;
+		using	MyIdentity::get_parent;
+		using	MyIdentity::save_parents_of_this;
+		using	MyIdentity::load_parents_of_this;
+		using	MyChildBase::has_parent;
+		using	MyChildBase::get_parent;
+		using	MyChildBase::save_parents_of_this;
+		using	MyChildBase::load_parents_of_this;
+
+	public: // lifecycle
+		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
+		Related&			operator=(				Related&&			other) noexcept = default;
+
+	private: // lifecycle (deleted)
+		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
+		Related&			operator=(				const Related&		OTHER) = delete;
+
+	public: // functions
+		void				save_all_relations(		std::ostream&		stream) const
+		{			
+			MyIdentity::save_all_relations(stream);
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(stream);
+		}
+
+		void				load_all_relations(		std::istream&		stream)
+		{
+			MyIdentity::load_all_relations(stream);
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(stream);
+		}
+	};
+
+
+	template<typename EntityT>
+	class	Related<EntityT, true, false>	: public	MaybeIdentified<EntityT>
+											, public	Child<EntityT, typename ParentList_of<EntityT>::type>
+											, public	Parent<EntityT, typename ChildList_of<EntityT>::type>
+	{
+	private: // subtypes
+		using	MyIdentity		= MaybeIdentified<EntityT>;
+		using	MyChildBase		= Child<EntityT, typename ParentList_of<EntityT>::type>;
+		using	MyParentBase	= Parent<EntityT, typename ChildList_of<EntityT>::type>;
+
+	public: // inherited members (overloading hack)
+		using	MyIdentity::MyIdentity;
+		using	MyIdentity::has_parent;
+		using	MyIdentity::get_parent;
+		using	MyIdentity::save_parents_of_this;
+		using	MyIdentity::load_parents_of_this;
+		using	MyChildBase::has_parent;
+		using	MyChildBase::get_parent;
+		using	MyChildBase::save_parents_of_this;
+		using	MyChildBase::load_parents_of_this;
+
+	public: // lifecycle
+		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
+		Related&			operator=(				Related&&			other) noexcept = default;
+
+	private: // lifecycle (deleted)
+		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
+		Related&			operator=(				const Related&		OTHER) = delete;
+
+	public: // functions
+		void				save_all_relations(		std::ostream&		stream) const
+		{			
+			MyIdentity::save_all_relations(stream);
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(stream);
+		}
+
+		void				load_all_relations(		std::istream&		stream)
+		{
+			MyIdentity::load_all_relations(stream);
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(stream);
+		}
+	};
+
+
+	template<typename EntityT>
+	class	Related<EntityT, false, true>	: public	MaybeIdentified<EntityT>
+											, public	Child<EntityT, typename ParentList_of<EntityT>::type>
+											, public	Parent<EntityT, typename ChildList_of<EntityT>::type>
+	{
+	private: // subtypes
+		using	MyIdentity		= MaybeIdentified<EntityT>;
+		using	MyChildBase		= Child<EntityT, typename ParentList_of<EntityT>::type>;
+		using	MyParentBase	= Parent<EntityT, typename ChildList_of<EntityT>::type>;
+
+	public: // inherited members (overloading hack)
+		using	MyIdentity::MyIdentity;
+		using	MyIdentity::has_child;
+		using	MyIdentity::can_have_another_child;
+		using	MyIdentity::numChildren;
+		using	MyIdentity::add_child;
+		using	MyIdentity::remove_child;
+		using	MyIdentity::remove_children_of_type;
+		using	MyIdentity::get_child;
+		using	MyIdentity::first_child;
+		using	MyIdentity::last_child;
+		using	MyIdentity::previous_child;
+		using	MyIdentity::next_child;
+		using	MyIdentity::for_each_child;
+		using	MyIdentity::save_children_of_this;
+		using	MyIdentity::load_children_of_this;
+		using	MyParentBase::has_child;
+		using	MyParentBase::can_have_another_child;
+		using	MyParentBase::numChildren;
+		using	MyParentBase::add_child;
+		using	MyParentBase::remove_child;
+		using	MyParentBase::remove_children_of_type;
+		using	MyParentBase::get_child;
+		using	MyParentBase::first_child;
+		using	MyParentBase::last_child;
+		using	MyParentBase::previous_child;
+		using	MyParentBase::next_child;
+		using	MyParentBase::for_each_child;
+		using	MyParentBase::save_children_of_this;
+		using	MyParentBase::load_children_of_this;
+
+	public: // lifecycle
+		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
+		Related&			operator=(				Related&&			other) noexcept = default;
+
+	private: // lifecycle (deleted)
+		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
+		Related&			operator=(				const Related&		OTHER) = delete;
+
+	public: // functions
+		void				save_all_relations(		std::ostream&		stream) const
+		{			
+			MyIdentity::save_all_relations(stream);
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(stream);
+		}
+
+		void				load_all_relations(		std::istream&		stream)
+		{
+			MyIdentity::load_all_relations(stream);
+			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(stream);
+			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(stream);
+		}
+	};
+
+
+	template<typename EntityT>
+	using	MaybeRelated = Related<EntityT, needs_ChildOverloading<EntityT>, needs_ParentOverloading<EntityT>>;
+}
+
+// component storage		(internal)
+namespace dpl
+{
+	template<typename ComponentT>
+	concept is_Component				= std::is_default_constructible_v<ComponentT>
+										&& std::is_copy_assignable_v<ComponentT>;
+
+	template<typename ComponentT>
+	concept is_TransferableComponent	= is_Component<ComponentT>
+										&& is_divisible_by<4, ComponentT>
+										&& std::is_trivially_destructible_v<ComponentT>;
+
+	template<typename ComponentT>
+	struct	IsComponent
+	{
+		static const bool value = is_Component<ComponentT>;
+	};
+
+	template<typename COMPONENT_TYPES>
+	concept	is_ComponentTypeList		= dpl::is_TypeList<COMPONENT_TYPES> 
+										&& COMPONENT_TYPES::ALL_UNIQUE 
+										&& COMPONENT_TYPES::template all<IsComponent>();
+
+	template<typename CompositeT, is_ComponentTypeList COMPONENT_TYPES>
+	class	ComponentTable;
+
+	template<typename EntityT>
+	using	AllComponentTypes_of	= typename ComponentQuery<EntityT>::AllComponentTypes;
+
+	template<typename EntityT>
+	concept is_Composite			= (AllComponentTypes_of<EntityT>::SIZE > 0);
+
+	template<typename CompositeT, typename... ComponentTn>
+	class	ComponentTable<CompositeT, dpl::TypeList<ComponentTn...>>
+	{
+	public: // subtypes
+		using	COMPONENT_TYPES = dpl::TypeList<ComponentTn...>;
+		using	Column			= std::tuple<ComponentTn*...>;
+		using	ConstColumn		= std::tuple<const ComponentTn*...>;
+
+		template<is_Component T>
+		using	ColumnStorage	= std::conditional_t<	is_TransferableComponent<T>,
+														dpl::StreamChunk<T>,
+														dpl::DynamicArray<T>>;
+
+		template<is_Component T>
+		class	Row	: private ColumnStorage<T>
+		{
+		private: // subtypes
+			using	MyStorageBase	= ColumnStorage<T>;
+
+		public: // subtypes
+			using	Invocation		= typename ColumnStorage<T>::Invocation;
+			using	ConstInvocation	= typename ColumnStorage<T>::ConstInvocation;
+
+		public: // constants
+			static constexpr bool IS_TRANSFERABLE = std::is_same_v<MyStorageBase, dpl::StreamChunk<T>>;
+
+		public: // friends
+			friend	MyStorageBase;
+			friend	ComponentTable;
+
+		public: // exposed functions
+			using	MyStorageBase::size;
+			using	MyStorageBase::index_of;
+
+		public: // lifecycle
+			CLASS_CTOR			Row() = default;
+			CLASS_CTOR			Row(				Row&&					other) noexcept = default;
+			Row&				operator=(			Row&&					other) noexcept = default;
+
+		private: // lifecycle (deleted)
+			CLASS_CTOR			Row(				const Row&				OTHER) = delete;
+			Row&				operator=(			const Row&				OTHER) = delete;
+
+		public: // functions
+			inline uint32_t		offset() const
+			{
+				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::offset;
+				else							return 0;
+			}
+
+			inline T*			modify()
+			{
+				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::modify();
+				else							return MyStorageBase::data();
+			}
+
+			inline const T*		read() const
+			{
+				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::read();
+				else							return MyStorageBase::data();
+			}
+
+			inline void			modify_each(		const Invocation&		INVOKE)
+			{
+				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::modify_each(INVOKE);
+				else							return MyStorageBase::for_each(INVOKE);
+			}
+
+			inline void			read_each(			const ConstInvocation&	INVOKE) const
+			{
+				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::read_each(INVOKE);
+				else							return MyStorageBase::for_each(INVOKE);
+			}
+
+			inline T*			at(					const uint32_t			COLUMN_INDEX)
+			{
+				return modify() + COLUMN_INDEX;
+			}
+
+			inline const T*		at(					const uint32_t			COLUMN_INDEX) const
+			{
+				return read() + COLUMN_INDEX;
+			}
+
+			inline uint32_t		index_of(			const T*				COMPONENT_ADDRESS) const
+			{
+				return MyStorageBase::index_of(COMPONENT_ADDRESS);
+			}
+
+		private: // internal functions
+			inline T*			enlarge(			const uint32_t			NUM_COLUMNS)
+			{
+				return MyStorageBase::enlarge(NUM_COLUMNS);
+			}
+
+			inline void			destroy_at(			const uint32_t			COLUMN_INDEX)
+			{
+				MyStorageBase::fast_erase(COLUMN_INDEX);
+			}
+		};
+
+		using	Rows			= std::tuple<Row<ComponentTn>...>;
+
+	private: // data
+		Rows m_rows; //<-- Each row has the same size.
+
+	protected: // lifecycle
+		CLASS_CTOR						ComponentTable() = default;
+
+	public: // row functions
+		static constexpr uint32_t		numRows()
+		{
+			return COMPONENT_TYPES::SIZE;
+		}
+
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		inline Row<T>&					row()
+		{
+			return std::get<Row<T>>(m_rows);
+		}
+
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		inline const Row<T>&			row() const
+		{
+			return std::get<Row<T>>(m_rows);
+		}
+
+	public: // column functions
+		inline uint32_t					numColumns() const
+		{
+			using FirstComponentType = COMPONENT_TYPES::template At<0>;
+			return Row<FirstComponentType>::size();
+		}
+
+		inline Column					column(			const uint32_t		COLUMN_INDEX)
+		{
+			return std::make_tuple(ComponentTable::row<ComponentTn>().at(COLUMN_INDEX)...);
+		}
+
+		inline ConstColumn				column(			const uint32_t		COLUMN_INDEX) const
+		{
+			return std::make_tuple(ComponentTable::row<ComponentTn>().at(COLUMN_INDEX)...);
+		}
+
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		inline uint32_t					column_index(	const T*			COMPONENT_ADDRESS) const
+		{
+			return ComponentTable::row<T>().index_of(COMPONENT_ADDRESS);
+		}
+
+	protected: // column functions
+		inline Column					add_columns(	const uint32_t		NUM_COLUMNS)
+		{
+			return std::make_tuple(ComponentTable::row<ComponentTn>().enlarge(NUM_COLUMNS)...);
+		}
+
+		inline Column					add_column()
+		{
+			return ComponentTable::add_columns(1);
+		}
+			
+		inline void						remove_column(	const uint32_t		COLUMN_INDEX)
+		{
+			(ComponentTable::row<ComponentTn>().destroy_at(COLUMN_INDEX), ...);
+		}
+	};
+
+	template<typename T>
+	using	MaybeComponentTable		= std::conditional_t<is_Composite<T>, ComponentTable<T, AllComponentTypes_of<T>>, std::monostate>;
+}
+
+// maybe composite			(internal)
+namespace dpl
+{
+	template<typename EntityT, is_ComponentTypeList COMPONENT_TYPES>
+	class	MaybeComposite;
+
+
+	template<typename EntityT>
+	class	MaybeComposite<EntityT, dpl::TypeList<>> : public MaybeRelated<EntityT>
+	{
+	public: // subtypes
+		using	MyRelation	= MaybeRelated<EntityT>;
+
+	public: // inherited members
+		using	MyRelation::MyRelation;
+
+	public: // lifecycle
+		CLASS_CTOR		MaybeComposite(		const MaybeComposite&	OTHER) = delete;
+		CLASS_CTOR		MaybeComposite(		MaybeComposite&&		other) noexcept = default;
+		MaybeComposite&	operator=(			const MaybeComposite&	OTHER) = delete;
+		MaybeComposite&	operator=(			MaybeComposite&&		other) noexcept = default;
+	};
+
+
+	template<typename EntityT, is_Component... Ts>
+	class	MaybeComposite<EntityT, dpl::TypeList<Ts...>> : public MaybeRelated<EntityT>
+	{
+	public: // subtypes
+		using	MyRelation			= MaybeRelated<EntityT>;
+
+	public: // subtypes
+		using	COMPONENT_TYPES		= AllComponentTypes_of<EntityT>;
+		using	Table				= ComponentTable<EntityT, COMPONENT_TYPES>;
+		using	Column				= typename Table::Column;
+		using	ConstColumn			= typename Table::ConstColumn;
+		using	MyPack				= EntityPack_of<EntityT>;
+
+	public: // inherited members
+		using	MyRelation::MyRelation;
+
+	public: // lifecycle
+		CLASS_CTOR				MaybeComposite(					const MaybeComposite&	OTHER) = delete;
+		CLASS_CTOR				MaybeComposite(					MaybeComposite&&		other) noexcept = default;
+		MaybeComposite&			operator=(						const MaybeComposite&	OTHER) = delete;
+		MaybeComposite&			operator=(						MaybeComposite&&		other) noexcept = default;
+
+	public: // component access
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		inline T&				get_component()
+		{
+			EntityPack_of<EntityT>& pack = EntityPack_of<EntityT>::ref();
+			return *pack.row<T>().at(get_index(pack));
+		}
+
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		inline const T&			get_component() const
+		{
+			const EntityPack_of<EntityT>& PACK = EntityPack_of<EntityT>::ref();
+			return *PACK.row<T>().at(get_index(PACK));
+		}
+
+		inline Column			get_all_components()
+		{
+			EntityPack_of<EntityT>& pack = EntityPack_of<EntityT>::ref();
+			return pack.column(get_index(pack));
+		}
+
+		inline ConstColumn		get_all_components() const
+		{
+			const EntityPack_of<EntityT>& PACK = EntityPack_of<EntityT>::ref();
+			return PACK.column(get_index(PACK));
+		}
+
+		inline void				import_components_from_binary(	std::istream&			stream)
+		{
+			std::apply
+			(
+				[&stream](Ts*... components)
+				{
+					(dpl::import_t(stream, *components), ...);
+
+				}, get_all_components()
+			);
+		}
+
+		inline void				export_components_to_binary(	std::ostream&			stream) const
+		{
+			std::apply
+			(
+				[&stream](const Ts*... components)
+				{
+					(dpl::export_t(stream, *components), ...);
+
+				}, get_all_components()
+			);
+		}
+
+	private: // functions
+		inline const uint32_t	get_index(						const MyPack&			PACK) const
+		{
+			return PACK.index_of(static_cast<EntityT*>(this));
+		}
+	};
 }
 
 // instance table			(internal) 
@@ -1621,358 +2272,6 @@ namespace dpl
 	using	MaybeInstantiable = std::conditional_t<is_Instantiable<EntityT>, Instantiable<EntityT>, NotInstantiable<EntityT>>;
 }
 
-// component storage		(internal)
-namespace dpl
-{
-	template<typename ComponentT>
-	concept is_Component				= std::is_default_constructible_v<ComponentT>
-										&& std::is_copy_assignable_v<ComponentT>;
-
-	template<typename ComponentT>
-	concept is_TransferableComponent	= is_Component<ComponentT>
-										&& is_divisible_by<4, ComponentT>
-										&& std::is_trivially_destructible_v<ComponentT>;
-
-	template<typename ComponentT>
-	struct	IsComponent
-	{
-		static const bool value = is_Component<ComponentT>;
-	};
-
-	template<typename COMPONENT_TYPES>
-	concept	is_ComponentTypeList		= dpl::is_TypeList<COMPONENT_TYPES> 
-										&& COMPONENT_TYPES::ALL_UNIQUE 
-										&& COMPONENT_TYPES::template all<IsComponent>();
-
-	template<typename CompositeT, is_ComponentTypeList COMPONENT_TYPES>
-	class	ComponentTable;
-
-
-	template<typename EntityT>
-	struct	ComponentQuery
-	{
-		using Base						= std::conditional_t<has_Base<EntityT>, typename Base_of<EntityT>::type, void>;
-		using OwnComponentTypes			= typename ComponentList_of<EntityT>::type;
-		using InheritedComponentTypes	= typename ComponentQuery<Base>::AllComponentTypes;
-
-		using AllComponentTypes			= dpl::merge_t<	OwnComponentTypes, 
-														InheritedComponentTypes>;
-	};
-
-	template<>
-	struct	ComponentQuery<void>
-	{
-		using AllComponentTypes = dpl::TypeList<>;
-	};
-
-	template<typename EntityT>
-	using	AllComponentTypes_of	= typename ComponentQuery<EntityT>::AllComponentTypes;
-
-	template<typename EntityT>
-	concept is_Composite			= (AllComponentTypes_of<EntityT>::SIZE > 0);
-
-	template<typename CompositeT, typename... ComponentTn>
-	class	ComponentTable<CompositeT, dpl::TypeList<ComponentTn...>>
-	{
-	public: // subtypes
-		using	COMPONENT_TYPES = dpl::TypeList<ComponentTn...>;
-		using	Column			= std::tuple<ComponentTn*...>;
-		using	ConstColumn		= std::tuple<const ComponentTn*...>;
-
-		template<is_Component T>
-		using	ColumnStorage	= std::conditional_t<	is_TransferableComponent<T>,
-														dpl::StreamChunk<T>,
-														dpl::DynamicArray<T>>;
-
-		template<is_Component T>
-		class	Row	: private ColumnStorage<T>
-		{
-		private: // subtypes
-			using	MyStorageBase	= ColumnStorage<T>;
-
-		public: // subtypes
-			using	Invocation		= typename ColumnStorage<T>::Invocation;
-			using	ConstInvocation	= typename ColumnStorage<T>::ConstInvocation;
-
-		public: // constants
-			static constexpr bool IS_TRANSFERABLE = std::is_same_v<MyStorageBase, dpl::StreamChunk<T>>;
-
-		public: // friends
-			friend	MyStorageBase;
-			friend	ComponentTable;
-
-		public: // exposed functions
-			using	MyStorageBase::size;
-			using	MyStorageBase::index_of;
-
-		public: // lifecycle
-			CLASS_CTOR			Row() = default;
-			CLASS_CTOR			Row(				Row&&					other) noexcept = default;
-			Row&				operator=(			Row&&					other) noexcept = default;
-
-		private: // lifecycle (deleted)
-			CLASS_CTOR			Row(				const Row&				OTHER) = delete;
-			Row&				operator=(			const Row&				OTHER) = delete;
-
-		public: // functions
-			inline uint32_t		offset() const
-			{
-				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::offset;
-				else							return 0;
-			}
-
-			inline T*			modify()
-			{
-				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::modify();
-				else							return MyStorageBase::data();
-			}
-
-			inline const T*		read() const
-			{
-				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::read();
-				else							return MyStorageBase::data();
-			}
-
-			inline void			modify_each(		const Invocation&		INVOKE)
-			{
-				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::modify_each(INVOKE);
-				else							return MyStorageBase::for_each(INVOKE);
-			}
-
-			inline void			read_each(			const ConstInvocation&	INVOKE) const
-			{
-				if constexpr(IS_TRANSFERABLE)	return MyStorageBase::read_each(INVOKE);
-				else							return MyStorageBase::for_each(INVOKE);
-			}
-
-			inline T*			at(					const uint32_t			COLUMN_INDEX)
-			{
-				return modify() + COLUMN_INDEX;
-			}
-
-			inline const T*		at(					const uint32_t			COLUMN_INDEX) const
-			{
-				return read() + COLUMN_INDEX;
-			}
-
-			inline uint32_t		index_of(			const T*				COMPONENT_ADDRESS) const
-			{
-				return MyStorageBase::index_of(COMPONENT_ADDRESS);
-			}
-
-		private: // internal functions
-			inline T*			enlarge(			const uint32_t			NUM_COLUMNS)
-			{
-				return MyStorageBase::enlarge(NUM_COLUMNS);
-			}
-
-			inline void			destroy_at(			const uint32_t			COLUMN_INDEX)
-			{
-				MyStorageBase::fast_erase(COLUMN_INDEX);
-			}
-		};
-
-		using	Rows			= std::tuple<Row<ComponentTn>...>;
-
-	private: // data
-		Rows m_rows; //<-- Each row has the same size.
-
-	protected: // lifecycle
-		CLASS_CTOR						ComponentTable() = default;
-
-	public: // row functions
-		static constexpr uint32_t		numRows()
-		{
-			return COMPONENT_TYPES::SIZE;
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		inline Row<T>&					row()
-		{
-			return std::get<Row<T>>(m_rows);
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		inline const Row<T>&			row() const
-		{
-			return std::get<Row<T>>(m_rows);
-		}
-
-	public: // column functions
-		inline uint32_t					numColumns() const
-		{
-			using FirstComponentType = COMPONENT_TYPES::template At<0>;
-			return Row<FirstComponentType>::size();
-		}
-
-		inline Column					column(			const uint32_t		COLUMN_INDEX)
-		{
-			return std::make_tuple(ComponentTable::row<ComponentTn>().at(COLUMN_INDEX)...);
-		}
-
-		inline ConstColumn				column(			const uint32_t		COLUMN_INDEX) const
-		{
-			return std::make_tuple(ComponentTable::row<ComponentTn>().at(COLUMN_INDEX)...);
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		inline uint32_t					column_index(	const T*			COMPONENT_ADDRESS) const
-		{
-			return ComponentTable::row<T>().index_of(COMPONENT_ADDRESS);
-		}
-
-	protected: // column functions
-		inline Column					add_columns(	const uint32_t		NUM_COLUMNS)
-		{
-			return std::make_tuple(ComponentTable::row<ComponentTn>().enlarge(NUM_COLUMNS)...);
-		}
-
-		inline Column					add_column()
-		{
-			return ComponentTable::add_columns(1);
-		}
-			
-		inline void						remove_column(	const uint32_t		COLUMN_INDEX)
-		{
-			(ComponentTable::row<ComponentTn>().destroy_at(COLUMN_INDEX), ...);
-		}
-	};
-
-	template<typename T>
-	using	MaybeComponentTable		= std::conditional_t<is_Composite<T>, ComponentTable<T, AllComponentTypes_of<T>>, std::monostate>;
-}
-
-// maybe composite			(internal)
-namespace dpl
-{
-	template<typename EntityT>
-	using	MaybeIdentified = std::conditional_t<!has_Base<EntityT>, Identity, typename Base_of<EntityT>::type>;
-
-	template<typename EntityT, is_ComponentTypeList COMPONENT_TYPES>
-	class	MaybeComposite;
-
-
-	template<typename EntityT>
-	class	MaybeComposite<EntityT, dpl::TypeList<>> : private	MaybeIdentified<EntityT>
-	{
-	public: // friends
-		friend	MaybeRelated<EntityT>;
-
-		template<typename>
-		friend class EntityPack_of;
-
-	private: // subtypes
-		using	MyIdentity = MaybeIdentified<EntityT>;
-		
-	public: // inherited members
-		using	MyIdentity::MyIdentity;
-		using	MyIdentity::name;
-		using	MyIdentity::storageID;
-
-	public: // lifecycle
-		CLASS_CTOR		MaybeComposite(		const MaybeComposite&	OTHER) = delete;
-		CLASS_CTOR		MaybeComposite(		MaybeComposite&&		other) noexcept = default;
-		MaybeComposite&	operator=(			const MaybeComposite&	OTHER) = delete;
-		MaybeComposite&	operator=(			MaybeComposite&&		other) noexcept = default;
-	};
-
-
-	template<typename EntityT, is_Component... Ts>
-	class	MaybeComposite<EntityT, dpl::TypeList<Ts...>> : private	MaybeIdentified<EntityT>
-	{
-	public: // friends
-		friend	MaybeRelated<EntityT>;
-
-		template<typename>
-		friend class EntityPack_of;
-
-	private: // subtypes
-		using	MyIdentity			= MaybeIdentified<EntityT>;
-
-	public: // subtypes
-		using	COMPONENT_TYPES		= AllComponentTypes_of<EntityT>;
-		using	Table				= ComponentTable<EntityT, COMPONENT_TYPES>;
-		using	Column				= typename Table::Column;
-		using	ConstColumn			= typename Table::ConstColumn;
-		using	MyPack				= EntityPack_of<EntityT>;
-
-	public: // inherited members
-		using	MyIdentity::MyIdentity;
-		using	MyIdentity::name;
-		using	MyIdentity::storageID;
-
-	public: // lifecycle
-		CLASS_CTOR		MaybeComposite(		const MaybeComposite&	OTHER) = delete;
-		CLASS_CTOR		MaybeComposite(		MaybeComposite&&		other) noexcept = default;
-		MaybeComposite&	operator=(			const MaybeComposite&	OTHER) = delete;
-		MaybeComposite&	operator=(			MaybeComposite&&		other) noexcept = default;
-
-	public: // functions
-		template<typename T>
-		inline bool				has_type() const
-		{
-			return EntityPack_of<T>::ref().typeID() == MyIdentity::storageID();
-		}
-
-	public: // component access
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		inline T&				get_component()
-		{
-			EntityPack_of<EntityT>& pack = EntityPack_of<EntityT>::ref();
-			return *pack.row<T>().at(get_index(pack));
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		inline const T&			get_component() const
-		{
-			const EntityPack_of<EntityT>& PACK = EntityPack_of<EntityT>::ref();
-			return *PACK.row<T>().at(get_index(PACK));
-		}
-
-		inline Column			get_all_components()
-		{
-			EntityPack_of<EntityT>& pack = EntityPack_of<EntityT>::ref();
-			return pack.column(get_index(pack));
-		}
-
-		inline ConstColumn		get_all_components() const
-		{
-			const EntityPack_of<EntityT>& PACK = EntityPack_of<EntityT>::ref();
-			return PACK.column(get_index(PACK));
-		}
-
-		inline void				import_components_from_binary(	std::istream&	stream)
-		{
-			std::apply
-			(
-				[&stream](Ts*... components)
-				{
-					(dpl::import_t(stream, *components), ...);
-
-				}, get_all_components()
-			);
-		}
-
-		inline void				export_components_to_binary(	std::ostream&	stream) const
-		{
-			std::apply
-			(
-				[&stream](const Ts*... components)
-				{
-					(dpl::export_t(stream, *components), ...);
-
-				}, get_all_components()
-			);
-		}
-
-	private: // functions
-		inline const uint32_t	get_index(						const MyPack&	PACK) const
-		{
-			return PACK.index_of(static_cast<EntityT*>(this));
-		}
-	};
-}
-
 // entity implementation	<------------------------------ FOR THE USER
 namespace dpl
 {
@@ -1999,7 +2298,6 @@ namespace dpl
 	template<typename EntityT>
 	class	Entity	: private	dpl::NamedType<EntityT>
 					, public	MaybeComposite<EntityT, AllComponentTypes_of<EntityT>>
-					, public	MaybeRelated<EntityT>
 					, public	MaybeInstantiable<EntityT>
 	{
 	private: // subtypes
