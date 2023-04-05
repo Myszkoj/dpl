@@ -1,141 +1,157 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="utilities">
+      <UniqueIdentifier>{949901ed-7088-41bd-91e6-d76d8dcdbb15}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    <Filter Include="containers">
+      <UniqueIdentifier>{c2a87a6a-7ea3-4ec5-b3b4-8d48029adce2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="value handlers">
+      <UniqueIdentifier>{53aa1cc8-819d-4cce-a97a-a6ad83ebbbea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="patterns - basic">
+      <UniqueIdentifier>{db7760ad-ec84-443a-a08c-216b02200867}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="patterns - other">
+      <UniqueIdentifier>{ef381462-295c-4fa8-90e3-23f23c58447f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="patterns - relations">
+      <UniqueIdentifier>{88c23bd0-41fd-4a6f-ae85-9a0643c94f73}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="TODO">
+      <UniqueIdentifier>{f3a3d99f-b90e-466b-8985-28a847ce238e}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\dpl_Association.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Sequence.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Chain.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_ReadOnly.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Swap.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Composite.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\dpl_GeneralException.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Singleton.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Unique.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Compendium.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Subject.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_VirtualConstructable.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Variation.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Result.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_NamedType.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Indexable.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_EventDispatcher.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Command.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Mask.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Repository.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Buffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Range.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_ThreadPool.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_TypeLock.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Ownership.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Archive.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Labelable.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Binary.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_ResourceControl.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_DynamicBuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Logger.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Timer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_StateMachine.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_DataTransfer.h">
-      <Filter>Header Files</Filter>
+      <Filter>utilities</Filter>
     </ClInclude>
     <ClInclude Include="include\dpl_TypeTraits.h">
-      <Filter>Header Files</Filter>
+      <Filter>utilities</Filter>
     </ClInclude>
-    <ClInclude Include="include\dpl_Relations.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_Distributor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_DynamicArray.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\dpl_StaticHolder.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\dpl_Swap.h">
+      <Filter>utilities</Filter>
     </ClInclude>
     <ClInclude Include="include\dpl_std_addons.h">
-      <Filter>Header Files</Filter>
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_TypeLock.h">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Timer.h">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Unique.h">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_DynamicArray.h">
+      <Filter>containers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Stream.h">
+      <Filter>containers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Distributor.h">
+      <Filter>containers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_DynamicBuffer.h">
+      <Filter>containers</Filter>
     </ClInclude>
     <ClInclude Include="include\dpl_ClassInfo.h">
-      <Filter>Header Files</Filter>
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Buffer.h">
+      <Filter>containers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Binary.h">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Repository.h">
+      <Filter>containers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Association.h">
+      <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Sequence.h">
+      <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Membership.h">
+      <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Singleton.h">
+      <Filter>patterns - basic</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Subject.h">
+      <Filter>patterns - basic</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Composite.h">
+      <Filter>patterns - basic</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Command.h">
+      <Filter>patterns - basic</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Archive.h">
+      <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_ThreadPool.h">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_VirtualConstructable.h">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Variation.h">
+      <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Ownership.h">
+      <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_EventDispatcher.h">
+      <Filter>patterns - basic</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_StateMachine.h">
+      <Filter>patterns - basic</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_ResourceControl.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_NamedType.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Logger.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Labelable.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Indexable.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Compendium.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Mask.h">
+      <Filter>value handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Range.h">
+      <Filter>value handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_ReadOnly.h">
+      <Filter>value handlers</Filter>
     </ClInclude>
     <ClInclude Include="include\dpl_Values.h">
-      <Filter>Header Files</Filter>
+      <Filter>value handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_StaticHolder.h">
+      <Filter>value handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Result.h">
+      <Filter>value handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_ECI.h">
+      <Filter>patterns - other</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Link.h">
+      <Filter>patterns - relations</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

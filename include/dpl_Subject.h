@@ -2,7 +2,7 @@
 
 
 #include "dpl_Unique.h"
-#include "dpl_Chain.h"
+#include "dpl_Membership.h"
 #include "dpl_GeneralException.h"
 
 
@@ -26,12 +26,12 @@ namespace dpl
 	*/
 	template<typename SubjectT>
 	class Subject	: public Unique<Subject<SubjectT>> 
-					, private Chain<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>
+					, private Group<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>
 	{
 	private: // subtypes
 		using MyObserver	= Observer<SubjectT>;
 		using MyUnique		= Unique<Subject<SubjectT>>;
-		using MyChain		= Chain<Subject<SubjectT>, MyObserver, SUBJECT_CHAIN_ID>;
+		using MyChain		= Group<Subject<SubjectT>, MyObserver, SUBJECT_CHAIN_ID>;
 
 	public: // relations
 		friend MyObserver;
@@ -119,16 +119,16 @@ namespace dpl
 		Person/device that observes the Subject.
 	*/
 	template<typename SubjectT>
-	class Observer : private Link<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>
+	class Observer : private Member<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>
 	{
 	private: // subtypes
 		using MySubject = Subject<SubjectT>;
-		using MyBase	= Link<MySubject, Observer<SubjectT>, SUBJECT_CHAIN_ID>;
+		using MyBase	= Member<MySubject, Observer<SubjectT>, SUBJECT_CHAIN_ID>;
 
 	public: // relations
 		friend MySubject;
 		friend MyBase;
-		friend Chain<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>;
+		friend Group<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>;
 		friend Sequenceable<Observer<SubjectT>, SUBJECT_CHAIN_ID>;
 
 	protected: // lifecycle

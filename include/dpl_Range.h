@@ -171,6 +171,13 @@ namespace dpl
 			end		= NEW_END;
 		}
 
+		inline void					reset()
+		{
+			begin	= 0;
+			end		= 0;
+			check_swapped();
+		}
+
 		inline void					reset(			const IndexT									NEW_BEGIN,
 													const IndexT									NEW_END)
 		{

@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <tuple>
 #include <stdexcept>
+#include <concepts>
 #include <cstddef> // offsetof
 
 
@@ -136,11 +137,7 @@ namespace dpl
 		);}
 
 	public:
-		template<typename T>
-		struct	Type
-		{
-			static constexpr uint32_t INDEX = IndexOf<T, TypeList<Ts...>>::INDEX;
-		};
+		using	type = TypeList<Ts...>;
 
 		/*
 			Stores ValueT for each type in the type list.
@@ -367,27 +364,6 @@ namespace dpl
 	}
 }
 
-namespace dpl
-{
-	// WARNING: Fails with multiple inheritance .
-	template < template <typename...> class base,typename derived>
-	struct	is_base_of_template_impl
-	{
-		template<typename... Ts>
-		static constexpr std::true_type  test(const base<Ts...> *);
-		static constexpr std::false_type test(...);
-		using type = decltype(test(std::declval<derived*>()));
-	};
-
-	// WARNING: Fails with multiple inheritance.
-	template < template <typename...> class base,typename derived>
-	using	is_base_of_template_t = typename is_base_of_template_impl<base, derived>::type;
-
-	// WARNING: Fails with multiple inheritance.
-	template < template <typename...> class base, typename derived>
-	concept is_base_of_template = is_base_of_template_t<base, derived>::value;
-}
-
 // concepts
 namespace dpl
 {
@@ -420,4 +396,26 @@ namespace dpl
 
 	template<typename ClassT, typename OtherT>
 	concept has_bidirectional_shift		= has_shift_left_operator<ClassT, OtherT> && has_shift_right_operator<ClassT, OtherT>;
+}
+
+// experimental
+namespace dpl
+{
+	// WARNING: Fails with multiple inheritance .
+	template < template <typename...> class base,typename derived>
+	struct	is_base_of_template_impl
+	{
+		template<typename... Ts>
+		static constexpr std::true_type  test(const base<Ts...> *);
+		static constexpr std::false_type test(...);
+		using type = decltype(test(std::declval<derived*>()));
+	};
+
+	// WARNING: Fails with multiple inheritance.
+	template < template <typename...> class base,typename derived>
+	using	is_base_of_template_t = typename is_base_of_template_impl<base, derived>::type;
+
+	// WARNING: Fails with multiple inheritance.
+	template < template <typename...> class base, typename derived>
+	concept is_base_of_template = is_base_of_template_t<base, derived>::value;
 }

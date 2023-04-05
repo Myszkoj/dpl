@@ -8,9 +8,9 @@
 #include "dpl_Variation.h"
 
 
+// forward declarations
 namespace dpl
 {
-//============ DECLARATIONS ============//
 	using	ResourceCharT = char;
 
 	template<typename T>
@@ -25,9 +25,11 @@ namespace dpl
 	class	ResourceControl;
 
 	class	ResourceManager;
+}
 
-//============ IMPLEMENTATIONS ============//
-
+// implementations
+namespace dpl
+{
 	/*
 		Base class for uniquely named resources.
 

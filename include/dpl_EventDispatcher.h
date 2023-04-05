@@ -9,29 +9,31 @@
 #include <mutex>
 
 
+// forward declarations
 namespace dpl
 {
-//============ DECLARATIONS ============//
 	using Event = IType;
-
-	template<typename EventT>
-	class EventType : public NamedType<EventT>
-					, public IndexableType<EventT>
-	{
-	
-	};
 
 	class EventDispatcher;
 	class Device;
 	class Emitter;
 
-	template<typename EventT>	
+	template<typename EventT>
 	class Transmitter;
 
 	template<typename EventT>
 	class Receiver;
+}
 
-//============ IMPLEMENTATIONS ============//
+// implementations
+namespace dpl
+{
+	template<typename EventT>
+	class EventType : public NamedType<EventT>
+					, public IndexableType<EventT>
+	{
+
+	};
 
 	template<typename T>
 	inline void validate_event_type()
@@ -95,11 +97,11 @@ namespace dpl
 	*/
 	class EventDispatcher	: public Singleton<EventDispatcher>
 							, private Variation<EventDispatcher, Device>
-							, private Chain<EventDispatcher, Emitter>
+							, private Group<EventDispatcher, Emitter>
 	{
 	public: // subtypes
 		using MyTransmitters	= Variation<EventDispatcher, Device>;
-		using MyEmitters		= Chain<EventDispatcher, Emitter>;
+		using MyEmitters		= Group<EventDispatcher, Emitter>;
 
 	public: // relations
 		friend Variant<EventDispatcher, Device>;
@@ -144,17 +146,17 @@ namespace dpl
 	/*
 		Emits any events.
 	*/
-	class Emitter : private Link<EventDispatcher, Emitter>
+	class Emitter : private Member<EventDispatcher, Emitter>
 	{
 	private: // subtypes
-		using MyBase = Link<EventDispatcher, Emitter>;
+		using MyBase = Member<EventDispatcher, Emitter>;
 
 	public: // relations
 		friend MyBase;
 		friend EventDispatcher;
 		friend Sequence<Emitter>;
 		friend Sequenceable<Emitter>;
-		friend Chain<EventDispatcher, Emitter>;
+		friend Group<EventDispatcher, Emitter>;
 
 	public: // lifecycle
 		CLASS_CTOR			Emitter(	EventDispatcher*	dispatcher = nullptr)
@@ -181,7 +183,7 @@ namespace dpl
 			}
 			else
 			{
-				Link::detach();
+				Member::detach();
 			}
 		}
 	};

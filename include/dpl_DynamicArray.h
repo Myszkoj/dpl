@@ -60,7 +60,7 @@ namespace dpl
 		{
 			clear();
 			m_buffer.swap(other.m_buffer);
-			m_size.swap(other.m_size);
+			std::swap(m_size, other.m_size);
 			return *this;
 		}
 
@@ -235,16 +235,21 @@ namespace dpl
 			return m_buffer.data() + OLD_SIZE;
 		}
 
-		void						reduce(							const uint32_t				AMOUNT)
+		void						reduce_if_possible(				const uint32_t				AMOUNT)
 		{
-			throw_if_invalid_reduce(AMOUNT);
-			const uint32_t NEW_SIZE = size() - AMOUNT;
+			const uint32_t NEW_SIZE = (AMOUNT < size())? size() - AMOUNT : 0;
 			for(uint32_t index = NEW_SIZE; index < size(); ++index)
 			{
 				m_buffer.destroy_at(index);
 			}
 			m_size = NEW_SIZE;
 			if(too_much_capacity()) downsize();
+		}
+
+		inline void					reduce(							const uint32_t				AMOUNT)
+		{
+			throw_if_invalid_reduce(AMOUNT);
+			reduce_if_possible(AMOUNT);
 		}
 
 		inline void					resize(							const uint32_t				NEW_SIZE)
@@ -256,8 +261,14 @@ namespace dpl
 		inline void					swap_elements(					const uint32_t				FIRST_INDEX,
 																	const uint32_t				SECOND_INDEX)
 		{
-			if(FIRST_INDEX == SECOND_INDEX) return;
+			if (FIRST_INDEX == SECOND_INDEX) return;
 			std::swap(at(FIRST_INDEX), at(SECOND_INDEX));
+		}
+
+		inline void					make_last(						const uint32_t				INDEX)
+		{
+			throw_if_invalid_index(INDEX);
+			swap_elements(INDEX, m_size - 1);
 		}
 
 		inline void					fast_erase(						const uint32_t				INDEX)

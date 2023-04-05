@@ -10,7 +10,7 @@
 // declarations
 namespace dpl
 {
-	class Multiton;
+	class Multition;
 
 	template<class T>
 	class Singleton;
@@ -22,7 +22,7 @@ namespace dpl
 	/*
 		This class acts as a context for all singleton types.
 	*/
-	class Multiton
+	class Multition
 	{
 	public: // friends
 		template<typename>
@@ -32,13 +32,13 @@ namespace dpl
 		std::unordered_map<std::type_index, void*> m_singletonTypes;
 
 	public: // lifecycle
-		CLASS_CTOR		Multiton() = default;
+		CLASS_CTOR		Multition() = default;
 
 	private: // lifecycle
-		CLASS_CTOR		Multiton(			const Multiton& OTHER) = delete;
-		CLASS_CTOR		Multiton(			Multiton&&		other) = delete;
-		Multiton&		operator=(			const Multiton& OTHER) = delete;
-		Multiton&		operator=(			Multiton&&		other) = delete;
+		CLASS_CTOR		Multition(			const Multition& OTHER) = delete;
+		CLASS_CTOR		Multition(			Multition&&		other) = delete;
+		Multition&		operator=(			const Multition& OTHER) = delete;
+		Multition&		operator=(			Multition&&		other) = delete;
 
 	private: // functions
 		template<typename SingletonT>
@@ -85,12 +85,11 @@ namespace dpl
 	{
 	private: // data
 		static Singleton*	sm_instance;
-		Multiton*			m_owner;
+		Multition*			m_owner;
 
 	protected: // lifecycle
-		CLASS_CTOR			Singleton(		Multiton&			multition)
-			: sm_instance(nullptr)
-			, m_owner(&multition)
+		CLASS_CTOR			Singleton(		Multition&			multition)
+			: m_owner(&multition)
 		{
 			multition.register_instance<T>(static_cast<T*>(this));
 			sm_instance = this;
@@ -102,7 +101,7 @@ namespace dpl
 			{
 				if (m_owner)
 				{
-					m_owner->unregister_instance();
+					m_owner->unregister_instance<T>(static_cast<T*>(this));
 					sm_instance = nullptr;
 					m_owner		= nullptr;
 				}
@@ -115,7 +114,7 @@ namespace dpl
 		Singleton&			operator=(		const Singleton&	OTHER) = delete;
 		Singleton&			operator=(		Singleton&&			other) = delete;
 
-	public: // functions
+	public: // access
 		static inline T*	ptr()
 		{
 			return static_cast<T*>(sm_instance);
@@ -131,8 +130,14 @@ namespace dpl
 			return static_cast<T&>(*sm_instance);
 		}
 
+	public: // functions
+		inline Multition&	owner() const
+		{
+			return *m_owner;
+		}
+
 	protected: // functions
-		static inline void	synchronize(	Multiton&			multition)
+		static inline void	synchronize(	Multition&			multition)
 		{
 			sm_instance = static_cast<Singleton<T>*>(multition.get<T>());
 		}

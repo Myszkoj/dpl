@@ -84,7 +84,7 @@ namespace dpl
 // implementation
 namespace dpl
 {
-	template<is_valid_mask_integer UIntT, typename EnumT = UIntT>
+	template<is_valid_mask_integer UIntT, typename EnumT>
 	class Mask
 	{
 	public: // constants

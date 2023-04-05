@@ -7,10 +7,10 @@
 #include <string>
 #include "dpl_Mask.h"
 
+#pragma pack(push, 4)
 
 namespace dpl
 {
-#pragma pack(push, 4)
 	class Timer
 	{
 	public: // subtypes
@@ -121,5 +121,6 @@ namespace dpl
 		TimePoint		m_startPoint;
 		Mask32<Flags>	m_state;
 	};
-#pragma pack(pop)
 }
+
+#pragma pack(pop)

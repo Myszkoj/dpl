@@ -1,6 +1,7 @@
 #pragma once
 
 
+#include <string>
 #include <vector>
 #include <stdexcept>
 #include <limits>
@@ -12,6 +13,12 @@ namespace dpl
 	{
 		INVALID_VECTOR_INDEX = std::numeric_limits<uint64_t>::max()
 	};
+
+
+	std::wstring	to_wstring(			const std::string_view&						STR)
+	{
+		return std::wstring(STR.data(), STR.data() + STR.size());
+	}
 
 
 	template<class T>

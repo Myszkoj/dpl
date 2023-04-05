@@ -147,6 +147,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="include\dpl_ECI.h" />
     <ClInclude Include="include\dpl_Archive.h" />
     <ClInclude Include="include\dpl_Binary.h" />
     <ClInclude Include="include\dpl_Buffer.h" />
@@ -156,17 +157,17 @@
     <ClInclude Include="include\dpl_DynamicBuffer.h" />
     <ClInclude Include="include\dpl_Indexable.h" />
     <ClInclude Include="include\dpl_Labelable.h" />
+    <ClInclude Include="include\dpl_Link.h" />
     <ClInclude Include="include\dpl_Logger.h" />
     <ClInclude Include="include\dpl_Mask.h" />
     <ClInclude Include="include\dpl_NamedType.h" />
     <ClInclude Include="include\dpl_Ownership.h" />
     <ClInclude Include="include\dpl_Range.h" />
-    <ClInclude Include="include\dpl_Relations.h" />
     <ClInclude Include="include\dpl_Distributor.h" />
     <ClInclude Include="include\dpl_Repository.h" />
     <ClInclude Include="include\dpl_ResourceControl.h" />
     <ClInclude Include="include\dpl_Result.h" />
-    <ClInclude Include="include\dpl_DataTransfer.h" />
+    <ClInclude Include="include\dpl_Stream.h" />
     <ClInclude Include="include\dpl_StateMachine.h" />
     <ClInclude Include="include\dpl_StaticHolder.h" />
     <ClInclude Include="include\dpl_std_addons.h" />
@@ -179,7 +180,7 @@
     <ClInclude Include="include\dpl_Compendium.h" />
     <ClInclude Include="include\dpl_Unique.h" />
     <ClInclude Include="include\dpl_Association.h" />
-    <ClInclude Include="include\dpl_Chain.h" />
+    <ClInclude Include="include\dpl_Membership.h" />
     <ClInclude Include="include\dpl_Composite.h" />
     <ClInclude Include="include\dpl_EventDispatcher.h" />
     <ClInclude Include="include\dpl_GeneralException.h" />

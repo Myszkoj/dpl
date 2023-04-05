@@ -11,17 +11,21 @@
 #include "dpl_Swap.h"
 
 
+#pragma pack(push, 1)
+
+// forward declarations
 namespace dpl
 {
-//============ DECLARATIONS ============//
 	template<typename CompositeT, typename ComponentT, uint32_t N>
 	class Component;
 
 	template<typename CompositeT, typename ComponentT, uint32_t N>
 	class Composite;
+}
 
-//============ IMPLEMENTATION ============//
-#pragma pack(push, 1)
+// implementations
+namespace dpl
+{
 	/*
 		NOTE: All derived classes have to override the Swap operator.
 	*/
@@ -280,5 +284,6 @@ namespace dpl
 #endif // _DEBUG
 		}
 	};
-#pragma pack(pop)
 }
+
+#pragma pack(pop)

@@ -5,31 +5,32 @@
 #include "dpl_Subject.h"
 #include "dpl_GeneralException.h"
 
-
+// forward declarations
 namespace dpl
 {
-//============ DECLARATIONS ============//
 	template<typename SubjectT>
 	class Reference;
 
 	template<typename SubjectT>
 	class Compendium;
+}
 
-//============ IMPLEMENTATIONS ============//
-
+// implementations
+namespace dpl
+{
 	/*
 		Reference to the Subject.
 	*/
 	template<typename SubjectT>
 	class Reference	: private Observer<SubjectT>
-					, public Link<Compendium<SubjectT>, Reference<SubjectT>>
+					, public Member<Compendium<SubjectT>, Reference<SubjectT>>
 	{
 	private: // subtypes
 		using	MyType			= Reference<SubjectT>;
 		using	MySubject		= Subject<SubjectT>;
 		using	MyCompendium	= Compendium<SubjectT>;
 		using	MyBase			= Observer<SubjectT>;
-		using	MySource		= Link<MyCompendium, MyType>;
+		using	MySource		= Member<MyCompendium, MyType>;
 
 	public: // relations
 		friend	MyCompendium;
@@ -99,7 +100,7 @@ namespace dpl
 		Stores description for each observed subject.
 	*/
 	template<typename SubjectT>
-	class Compendium : public Chain<Compendium<SubjectT>, Reference<SubjectT>>
+	class Compendium : public Group<Compendium<SubjectT>, Reference<SubjectT>>
 	{
 	public: // subtypes
 		using Callback		= std::function<void(SubjectT&)>;
@@ -109,7 +110,7 @@ namespace dpl
 		using MySubject		= Subject<SubjectT>;
 		using MyReference	= Reference<SubjectT>;
 		using MyReferences	= std::unordered_map<uint32_t, MyReference>;
-		using MyOrder		= Chain<Compendium<SubjectT>, Reference<SubjectT>>;
+		using MyOrder		= Group<Compendium<SubjectT>, Reference<SubjectT>>;
 
 	public: // relations
 		friend MyReference;

@@ -94,7 +94,7 @@ namespace dpl
 		mutable std::mutex m_mtx;
 
 	public: // lifecycle
-		CLASS_CTOR				Logger(				Multiton&							multition)
+		CLASS_CTOR				Logger(				Multition&							multition)
 			: Singleton(multition)
 		{
 

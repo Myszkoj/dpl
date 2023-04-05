@@ -3,7 +3,7 @@
 
 #include <atomic>
 #include "dpl_DynamicArray.h"
-#include "dpl_Chain.h"
+#include "dpl_Membership.h"
 #include "dpl_Mask.h"
 #include "dpl_Range.h"
 
@@ -14,10 +14,10 @@
 namespace dpl
 {
 	template<typename T>
-	class	TransferablePack;
+	class	StreamChunk;
 
 	template<typename T>
-	class	BufferTransfer;
+	class	StreamController;
 }
 
 // definitions
@@ -32,13 +32,13 @@ namespace dpl
 
 
 	template<typename T>
-	class	TransferablePack	: private dpl::Link<BufferTransfer<T>, TransferablePack<T>>
+	class	StreamChunk	: private dpl::Member<StreamController<T>, StreamChunk<T>>
 	{
 	private: // subtypes
-		using	MyType		= TransferablePack<T>;
-		using	MyTransfer	= BufferTransfer<T>;
-		using	MyLinkBase	= dpl::Link<MyTransfer, MyType>;
-		using	MyChain		= dpl::Chain<MyTransfer, MyType>;
+		using	MyType		= StreamChunk<T>;
+		using	MyTransfer	= StreamController<T>;
+		using	MyLinkBase	= dpl::Member<MyTransfer, MyType>;
+		using	MyChain		= dpl::Group<MyTransfer, MyType>;
 
 	public: // friends
 		friend	MyTransfer;
@@ -56,29 +56,29 @@ namespace dpl
 		static const uint32_t INITIAL_CAPACITY = 32;
 
 	public: // data
-		mutable dpl::ReadOnly<Range,	TransferablePack>	range; // Note: May be invalid if transfer was not yet updated.
+		mutable dpl::ReadOnly<Range,	StreamChunk>	range; // Note: May be invalid if transfer was not yet updated.
 
 	private: // data
-		mutable dpl::DynamicArray<T>						container;
-		mutable dpl::Mask32_t								flags;	
+		mutable dpl::DynamicArray<T>					container;
+		mutable dpl::Mask32_t							flags;	
 
 	public: // lifecycle
-		CLASS_CTOR					TransferablePack()
+		CLASS_CTOR					StreamChunk()
 			: range(0)
 		{
 			flags.set_at(KEPT, true);
 		}
 
-		CLASS_CTOR					TransferablePack(				TransferablePack&&		other) noexcept
+		CLASS_CTOR					StreamChunk(					StreamChunk&&			other) noexcept
 			: MyLinkBase(std::move(other))
 			, range(other.range)
 			, container(std::move(other.container))
 			, flags(other.flags)
 		{
-			other.range = 0;
+			other.range->reset();
 		}
 
-		CLASS_DTOR					~TransferablePack()
+		CLASS_DTOR					~StreamChunk()
 		{
 			dpl::no_except([&]()
 			{
@@ -86,7 +86,7 @@ namespace dpl
 			});
 		}
 
-		TransferablePack&			operator=(						TransferablePack&&		other) noexcept
+		StreamChunk&				operator=(						StreamChunk&&			other) noexcept
 		{
 			MyLinkBase::operator=(std::move(other));
 			range.swap(other.range);
@@ -98,17 +98,17 @@ namespace dpl
 	public: // transfer functions
 		inline bool					is_connected_to_transfer() const
 		{
-			return MyLinkBase::is_linked();
+			return MyLinkBase::is_member();
 		}
 
 		inline MyTransfer&			get_transfer()
 		{
-			return *MyLinkBase::get_chain();
+			return *MyLinkBase::get_group();
 		}
 
 		inline const MyTransfer&	get_transfer() const
 		{
-			return *MyLinkBase::get_chain();
+			return *MyLinkBase::get_group();
 		}
 
 		void						detach_from_transfer()
@@ -209,12 +209,27 @@ namespace dpl
 			mark_as_resized();
 		}
 
+		void						reduce_if_possible(				const uint32_t			AMOUNT)
+		{
+			restore();
+			container.reduce_if_possible(AMOUNT);
+			mark_as_modified();
+			mark_as_resized();
+		}
+
 		void						swap_elements(					const uint32_t			FIRST_INDEX,
 																	const uint32_t			SECOND_INDEX)
 		{
 			if(FIRST_INDEX == SECOND_INDEX) return;
 			restore();
 			container.swap_elements(FIRST_INDEX, SECOND_INDEX);
+			mark_as_modified();
+		}
+
+		inline void					make_last(						const uint32_t			INDEX)
+		{
+			restore();
+			container.make_last(INDEX);
 			mark_as_modified();
 		}
 
@@ -353,32 +368,33 @@ namespace dpl
 		Thread-safe as long as data is kept after flush.
 	*/
 	template<typename T>
-	class	BufferTransfer : private dpl::Chain<BufferTransfer<T>, TransferablePack<T>>
+	class	StreamController : private dpl::Group<StreamController<T>, StreamChunk<T>>
 	{
 	private: // subtypes
-		using	MyType		= BufferTransfer<T>;
-		using	MyArray		= TransferablePack<T>;
-		using	MyChainBase	= dpl::Chain<MyType, MyArray>;
-		using	MyLink		= dpl::Link<MyType, MyArray>;
+		using	MyType		= StreamController<T>;
+		using	MyChunk		= StreamChunk<T>;
+		using	MyChainBase	= dpl::Group<MyType, MyChunk>;
+		using	MyLink		= dpl::Member<MyType, MyChunk>;
 
 	public: // relations
-		friend	MyArray;
+		friend	MyChunk;
 		friend	MyChainBase;
 		friend	MyLink;
 
 	public: // subtypes
-		using	Callback		= std::function<void(MyArray&)>;
-		using	ConstCallback	= std::function<void(const MyArray&)>;
+		using	Callback		= std::function<void(MyChunk&)>;
+		using	ConstCallback	= std::function<void(const MyChunk&)>;
 
 	public: // data
-		mutable dpl::ReadOnly<uint32_t, BufferTransfer>	size; // Total number of data units.
-		dpl::ReadOnly<bool, BufferTransfer>				bKeepFlushedData;
+		mutable dpl::ReadOnly<uint32_t, StreamController>	size; // Total number of data units.
+		dpl::ReadOnly<bool, StreamController>				bKeepFlushedData;
+
 	private: // data
-		mutable std::atomic_bool						bResized;
-		mutable std::atomic_bool						bNeedsFlush;
+		mutable std::atomic_bool							bResized;
+		mutable std::atomic_bool							bNeedsFlush;
 
 	protected: // lifecycle
-		CLASS_CTOR				BufferTransfer(		const bool						bKEEP_FLUSHED_DATA = true)
+		CLASS_CTOR				StreamController(		const bool						bKEEP_FLUSHED_DATA = true)
 			: size(0)
 			, bKeepFlushedData(bKEEP_FLUSHED_DATA)
 			, bResized(false)
@@ -387,9 +403,9 @@ namespace dpl
 			
 		}
 			
-		CLASS_CTOR				BufferTransfer(		const BufferTransfer&			OTHER) = delete;
+		CLASS_CTOR				StreamController(		const StreamController&			OTHER) = delete;
 				
-		CLASS_CTOR				BufferTransfer(		BufferTransfer&&				other) noexcept
+		CLASS_CTOR				StreamController(		StreamController&&				other) noexcept
 			: MyChainBase(std::move(other))
 			, size(other.size)
 			, bKeepFlushedData(other.bKeepFlushedData)
@@ -399,9 +415,9 @@ namespace dpl
 
 		}
 
-		BufferTransfer&			operator=(			const BufferTransfer&			OTHER) = delete;
+		StreamController&		operator=(				const StreamController&			OTHER) = delete;
 
-		BufferTransfer&			operator=(			BufferTransfer&&				other) noexcept
+		StreamController&		operator=(				StreamController&&				other) noexcept
 		{
 			detach_all_arrays();
 			MyChainBase::operator=(std::move(other));
@@ -418,33 +434,33 @@ namespace dpl
 			return bResized.load(std::memory_order_relaxed) || bNeedsFlush.load(std::memory_order_relaxed);
 		}
 
-		inline bool				attach_array(		MyArray&						array)
+		inline bool				attach_array(			MyChunk&						chunk)
 		{
 			if(!std::is_trivially_destructible_v<T>)	return false;
-			if(!MyChainBase::attach_back(array))		return false;
-			array.flags.set_at(TransferFlags::KEPT, bKeepFlushedData);
+			if(!MyChainBase::attach_back(chunk))		return false;
+			chunk.flags.set_at(TransferFlags::KEPT, bKeepFlushedData);
 			notify_resized();
 			return true;
 		}
 
-		inline void				for_each_array(		const Callback&					FUNCTION)
+		inline void				for_each_array(			const Callback&					FUNCTION)
 		{
 			MyChainBase::iterate_forward(FUNCTION);
 		}
 
-		inline void				for_each_array(		const ConstCallback&			FUNCTION) const
+		inline void				for_each_array(			const ConstCallback&			FUNCTION) const
 		{
 			MyChainBase::iterate_forward(FUNCTION);
 		}
 
-		inline void				detach_array(		MyArray&						array)
+		inline void				detach_array(			MyChunk&						chunk)
 		{
-			if(array.is_linked(*this)) array.detach_from_transfer();
+			if(chunk.is_linked_to(*this)) chunk.detach_from_transfer();
 		}
 
 		inline void				detach_all_arrays()
 		{
-			while(MyArray* current = MyChainBase::first())
+			while(MyChunk* current = MyChainBase::first())
 			{
 				detach_array(*current);
 			}
@@ -460,7 +476,7 @@ namespace dpl
 
 			if(bNeedsFlush.load(std::memory_order_relaxed)) //<-- At least one array needs flush.
 			{
-				BufferTransfer::for_each_array([&](const MyArray& PACK)
+				StreamController::for_each_array([&](const MyChunk& PACK)
 				{
 					PACK.flush();
 				});
@@ -474,11 +490,11 @@ namespace dpl
 
 		virtual void			on_resized() const{}
 
-		virtual void			on_flush_array(		const dpl::IndexRange<uint32_t>	RANGE,
-													const T*						DATA) const{}
+		virtual void			on_flush_array(			const dpl::IndexRange<uint32_t>	RANGE,
+														const T*						DATA) const{}
 
-		virtual void			on_restore_array(	const dpl::IndexRange<uint32_t>	RANGE,
-													T*								data) const{}
+		virtual void			on_restore_array(		const dpl::IndexRange<uint32_t>	RANGE,
+														T*								data) const{}
 
 		virtual void			on_updated() const{}
 
@@ -499,7 +515,7 @@ namespace dpl
 			if(bResized.load(std::memory_order_relaxed))
 			{
 				size = 0;
-				BufferTransfer::for_each_array([&](const MyArray& PACK)
+				StreamController::for_each_array([&](const MyChunk& PACK)
 				{
 					PACK.restore(true); //<-- Make sure that data is restored before next flush.
 					*size += PACK.update_range(size);
