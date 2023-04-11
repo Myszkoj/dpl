@@ -19,7 +19,10 @@
     <Filter Include="patterns - relations">
       <UniqueIdentifier>{88c23bd0-41fd-4a6f-ae85-9a0643c94f73}</UniqueIdentifier>
     </Filter>
-    <Filter Include="TODO">
+    <Filter Include="patterns - complex">
+      <UniqueIdentifier>{f0b4a113-c3ae-4c32-bf70-a4b6b1190a97}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="experiments">
       <UniqueIdentifier>{f3a3d99f-b90e-466b-8985-28a847ce238e}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -147,11 +150,14 @@
     <ClInclude Include="include\dpl_Result.h">
       <Filter>value handlers</Filter>
     </ClInclude>
-    <ClInclude Include="include\dpl_ECI.h">
-      <Filter>patterns - other</Filter>
-    </ClInclude>
     <ClInclude Include="include\dpl_Link.h">
       <Filter>patterns - relations</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_ECI.h">
+      <Filter>patterns - complex</Filter>
+    </ClInclude>
+    <ClInclude Include="include\experiments\dpl_FakeOverloadingHack.h">
+      <Filter>experiments</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -195,7 +195,7 @@ namespace dpl
 			return HasType<T, TypeList<Ts...>>::value;
 		}
 
-		template<typename T>
+		template <typename T>
 		static constexpr uint32_t	index_of()
 		{
 			return IndexOf<T, TypeList<Ts...>>::INDEX;
@@ -211,6 +211,12 @@ namespace dpl
 		static constexpr bool		any()
 		{
 			return std::disjunction_v<PREDICATE<Ts>...>;
+		}
+
+		template <template <typename> class FUNCTOR, typename... Args>
+		static constexpr void		execute(Args&&... args)
+		{
+			(FUNCTOR<Ts>()(std::forward<Args>(args)...), ...);
 		}
 
 		template<typename T>

@@ -124,17 +124,17 @@ namespace dpl
 		}
 
 	public: // functions
-		inline const T*			first() const
+		const T*				first() const
 		{
 			return m_loop.next(*this);
 		}
 
-		inline const T*			last() const
+		const T*				last() const
 		{
 			return m_loop.previous(*this);
 		}
 
-		inline bool				empty() const
+		bool					empty() const
 		{
 			return first() == nullptr;
 		}
@@ -142,7 +142,7 @@ namespace dpl
 		/*
 			Returns true if object is a nullptr or it points to the internal loop object(end of the sequence).
 		*/
-		inline bool				is_end(					const MySequenceable*		OBJ) const
+		bool					is_end(					const MySequenceable*		OBJ) const
 		{
 			return OBJ == &m_loop || OBJ == nullptr;
 		}
@@ -203,23 +203,23 @@ namespace dpl
 			return count;
 		}
 
-		inline NumInSequence	for_each(				const InvokeConst&			INVOKE) const
+		NumInSequence			for_each(				const InvokeConst&			INVOKE) const
 		{
 			return Sequence::iterate_forward(INVOKE);
 		}
 
-		inline NumInSequence	for_each_until(			const InvokeConstUntil&		INVOKE) const
+		NumInSequence			for_each_until(			const InvokeConstUntil&		INVOKE) const
 		{
 			return Sequence::iterate_forward_until(INVOKE);
 		}
 
 	protected: // functions
-		inline T*				first()
+		T*						first()
 		{
 			return m_loop.next(*this);
 		}
 
-		inline T*				last()
+		T*						last()
 		{
 			return m_loop.previous(*this);
 		}
@@ -318,12 +318,12 @@ namespace dpl
 			return count;
 		}
 
-		inline NumInSequence	for_each(				const Invoke&				INVOKE)
+		NumInSequence			for_each(				const Invoke&				INVOKE)
 		{
 			return Sequence::iterate_forward(INVOKE);
 		}
 
-		inline NumInSequence	for_each_until(			const InvokeUntil&			INVOKE)
+		NumInSequence			for_each_until(			const InvokeUntil&			INVOKE)
 		{
 			return Sequence::iterate_forward_until(INVOKE);
 		}

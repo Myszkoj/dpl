@@ -217,6 +217,14 @@ namespace dpl
 			mark_as_resized();
 		}
 
+		void						resize(							const uint32_t			NEW_SIZE)
+		{
+			restore();
+			container.resize(NEW_SIZE);
+			mark_as_modified();
+			mark_as_resized();
+		}
+
 		void						swap_elements(					const uint32_t			FIRST_INDEX,
 																	const uint32_t			SECOND_INDEX)
 		{

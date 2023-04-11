@@ -190,6 +190,7 @@
     <ClInclude Include="include\dpl_Subject.h" />
     <ClInclude Include="include\dpl_Swap.h" />
     <ClInclude Include="include\dpl_Variation.h" />
+    <ClInclude Include="include\experiments\dpl_FakeOverloadingHack.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="dpl_TODO.txt" />
