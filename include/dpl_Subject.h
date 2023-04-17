@@ -31,11 +31,11 @@ namespace dpl
 	private: // subtypes
 		using MyObserver	= Observer<SubjectT>;
 		using MyUnique		= Unique<Subject<SubjectT>>;
-		using MyChain		= Group<Subject<SubjectT>, MyObserver, SUBJECT_CHAIN_ID>;
+		using MyGroup		= Group<Subject<SubjectT>, MyObserver, SUBJECT_CHAIN_ID>;
 
 	public: // relations
 		friend MyObserver;
-		friend MyChain;
+		friend MyGroup;
 
 	protected: // lifecycle
 		CLASS_CTOR				Subject() = default;
@@ -44,7 +44,7 @@ namespace dpl
 
 		CLASS_CTOR				Subject(		Subject&&			other) noexcept
 			: MyUnique(std::move(other))
-			, MyChain(std::move(other))
+			, MyGroup(std::move(other))
 		{
 
 		}
@@ -60,14 +60,14 @@ namespace dpl
 		{
 			remove_all_observers();
 			MyUnique::operator=(std::move(other));
-			MyChain::operator=(std::move(other));
+			MyGroup::operator=(std::move(other));
 			return *this;
 		}
 
 		inline Subject&			operator=(		Swap<Subject>		other)
 		{
 			MyUnique::operator=(std::move(*other));
-			MyChain::operator=(Swap(static_cast<MyChain&>(*other.get())));
+			MyGroup::operator=(Swap(static_cast<MyGroup&>(*other.get())));
 			return *this;
 		}
 
@@ -79,13 +79,13 @@ namespace dpl
 	protected: // functions
 		inline bool				is_observed() const
 		{
-			return MyChain::size() > 0;
+			return MyGroup::size() > 0;
 		}
 
 		inline void				notify_observers()
 		{
 			SubjectT& subject = *cast();
-			MyChain::for_each_link([&](MyObserver& observer)
+			MyGroup::for_each_link([&](MyObserver& observer)
 			{
 				observer.on_update(subject);
 			});
@@ -93,7 +93,7 @@ namespace dpl
 
 		inline void				remove_all_observers()
 		{
-			while(MyObserver* observer = MyChain::first())
+			while(MyObserver* observer = MyGroup::first())
 			{
 				observer->stop_observation();
 			}

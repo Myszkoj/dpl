@@ -1,6 +1,9 @@
 #pragma once
 
 
+#include "dpl_ClassInfo.h"
+
+
 namespace dpl
 {
 	/*

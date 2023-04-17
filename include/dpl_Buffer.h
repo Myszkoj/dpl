@@ -256,21 +256,32 @@ namespace dpl
 															const OnRelocate&	ON_RELOCATE)
 		{
 			Buffer<T> newBuffer(NEW_CAPACITY);
-			ON_RELOCATE(newBuffer);
+			if(ON_RELOCATE) ON_RELOCATE(newBuffer);
 			newBuffer.swap(*this);
 		}
 
-	public: // contiguous data functions
-		void				copy_from(						Buffer&				source,
+	public: // contiguous data functions (WARNING! None of this functions call destructors of the elements of this buffer!)
+		void				mimic(							const Buffer&		SOURCE,
+															uint32_t			numElements = -1)
+		{
+			if(numElements > SOURCE.m_capacity) numElements = SOURCE.m_capacity;
+			if(m_capacity != SOURCE.m_capacity) relocate(SOURCE.m_capacity, nullptr);
+			for(uint32_t index = 0; index < numElements; ++index)
+			{
+				Buffer::construct_at(index, SOURCE[index]);
+			}
+		}
+
+		void				copy_from(						const Buffer&		SOURCE,
 															const uint32_t		NUM_ELEMENTS,
 															const uint32_t		SRC_OFFSET = 0,
 															const uint32_t		DST_OFFSET = 0)
 		{
-			source.throw_if_invalid_range(SRC_OFFSET, NUM_ELEMENTS);
+			SOURCE.throw_if_invalid_range(SRC_OFFSET, NUM_ELEMENTS);
 			throw_if_invalid_range(DST_OFFSET, NUM_ELEMENTS);
 			for(uint32_t index = 0; index < NUM_ELEMENTS; ++index)
 			{
-				Buffer::construct_at(index + DST_OFFSET, source[index + SRC_OFFSET]);
+				Buffer::construct_at(index + DST_OFFSET, SOURCE[index + SRC_OFFSET]);
 			}
 		}
 

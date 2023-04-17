@@ -17,6 +17,13 @@ namespace dpl
 	}
 
 
+	template<typename T>
+	struct	Tag
+	{
+		using type = T;
+	};
+
+
 	template<typename... Ts>
 	class	TypeList
 	{
@@ -162,29 +169,32 @@ namespace dpl
 			}
 		};
 
-		using	Unique			= typename MakeUnique<TypeList<>, Ts...>::Type;
+		using	Unique				= typename MakeUnique<TypeList<>, Ts...>::Type;
 		
 		template<uint32_t INDEX>
-		using	At				= typename Extract<INDEX, Ts...>::type;
+		using	At					= typename Extract<INDEX, Ts...>::type;
 
 		template <template <typename> class PREDICATE>
-		using	Subtypes		= decltype(TypeList::get_Subtypes<PREDICATE>( TypeList<Ts...>{}, TypeList<>{} ));
+		using	Subtypes			= decltype(TypeList::get_Subtypes<PREDICATE>( TypeList<Ts...>{}, TypeList<>{} ));
 
 		template<typename T>
-		using	push_front		= dpl::TypeList<T, Ts...>;
+		using	push_front			= dpl::TypeList<T, Ts...>;
 
 		template<typename T>
-		using	push_back		= dpl::TypeList<Ts..., T>;
+		using	push_back			= dpl::TypeList<Ts..., T>;
+
+		template<template<typename> class CapsuleT>
+		using	encapsulate_in		= dpl::TypeList<CapsuleT<Ts>...>;
 
 		template<bool DUMMY = true> //<-- without a dummy, this would result in a infinite loop of definitions
-		using	reverse			= typename Reverse<Ts...>::types;
+		using	reverse				= typename Reverse<Ts...>::types;
 
-		using	DataPack_r		= std::tuple<Ts...>;
-		using	PtrPack_r		= std::tuple<Ts*...>;
-		using	ConstPtrPack_r	= std::tuple<const Ts*...>;
-		using	DataPack		= reverse<true>::DataPack_r;
-		using	PtrPack			= reverse<true>::PtrPack_r;
-		using	ConstPtrPack	= reverse<true>::ConstPtrPack_r;
+		using	DataPack_r			= std::tuple<Ts...>;
+		using	PtrPack_r			= std::tuple<Ts*...>;
+		using	ConstPtrPack_r		= std::tuple<const Ts*...>;
+		using	DataPack			= reverse<true>::DataPack_r;
+		using	PtrPack				= reverse<true>::PtrPack_r;
+		using	ConstPtrPack		= reverse<true>::ConstPtrPack_r;
 
 		static constexpr size_t SIZE		= (0 + ... + Increment<Ts>::VALUE);
 		static constexpr bool	ALL_UNIQUE	= std::is_same_v<Unique, TypeList<Ts...>>;
@@ -232,6 +242,7 @@ namespace dpl
 			return dpl::tuple_element_byte_offset<DataPack_r, index_of<T>()>();
 		}
 	};
+
 
 	template<template<typename> class UCond, typename... Ts>
 	struct	FilterOut

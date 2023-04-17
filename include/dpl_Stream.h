@@ -13,10 +13,18 @@
 // declarations
 namespace dpl
 {
-	template<typename T>
-	class	StreamChunk;
+	template<uint32_t N, typename T>
+	concept is_divisible_by	= sizeof(T)%N == 0;
 
 	template<typename T>
+	concept is_Streamable	=  std::is_trivially_destructible_v<T>
+							&& std::is_copy_assignable_v<T>
+							&& is_divisible_by<4, T>;
+
+	template<is_Streamable T>
+	class	StreamChunk;
+
+	template<is_Streamable T>
 	class	StreamController;
 }
 
@@ -31,19 +39,19 @@ namespace dpl
 	};
 
 
-	template<typename T>
+	template<is_Streamable T>
 	class	StreamChunk	: private dpl::Member<StreamController<T>, StreamChunk<T>>
 	{
 	private: // subtypes
-		using	MyType		= StreamChunk<T>;
-		using	MyTransfer	= StreamController<T>;
-		using	MyLinkBase	= dpl::Member<MyTransfer, MyType>;
-		using	MyChain		= dpl::Group<MyTransfer, MyType>;
+		using	MyType			= StreamChunk<T>;
+		using	MyStream		= StreamController<T>;
+		using	MyMemberBase	= dpl::Member<MyStream, MyType>;
+		using	MyGroup			= dpl::Group<MyStream, MyType>;
 
 	public: // friends
-		friend	MyTransfer;
-		friend	MyLinkBase;
-		friend	MyChain;
+		friend	MyStream;
+		friend	MyMemberBase;
+		friend	MyGroup;
 		friend	dpl::Sequenceable<MyType>;
 
 	public: // subtypes
@@ -51,9 +59,6 @@ namespace dpl
 		using	Range			= dpl::IndexRange<uint32_t>;
 		using	Invocation		= typename dpl::DynamicArray<T>::Invocation;
 		using	ConstInvocation	= typename dpl::DynamicArray<T>::ConstInvocation;
-
-	public: // constants
-		static const uint32_t INITIAL_CAPACITY = 32;
 
 	public: // data
 		mutable dpl::ReadOnly<Range,	StreamChunk>	range; // Note: May be invalid if transfer was not yet updated.
@@ -64,13 +69,24 @@ namespace dpl
 
 	public: // lifecycle
 		CLASS_CTOR					StreamChunk()
-			: range(0)
 		{
 			flags.set_at(KEPT, true);
 		}
 
+		CLASS_CTOR					StreamChunk(					const StreamChunk&		OTHER)
+			: range(0, OTHER.size())
+			, flags(OTHER.flags)
+		{
+			OTHER.read();
+			container = OTHER.container;
+			if (OTHER.is_stream_ready())
+			{
+				const_cast<MyStream&>(OTHER.get_stream()).add_chunk(*this);
+			}
+		}
+
 		CLASS_CTOR					StreamChunk(					StreamChunk&&			other) noexcept
-			: MyLinkBase(std::move(other))
+			: MyMemberBase(std::move(other))
 			, range(other.range)
 			, container(std::move(other.container))
 			, flags(other.flags)
@@ -80,43 +96,54 @@ namespace dpl
 
 		CLASS_DTOR					~StreamChunk()
 		{
-			dpl::no_except([&]()
+			dpl::no_except([&](){	detach_from_stream();	});
+		}
+
+		StreamChunk&				operator=(						const StreamChunk&		OTHER)
+		{
+			detach_from_stream();
+			OTHER.read();
+			range->reset(0, OTHER.size());
+			container	= OTHER.container;
+			flags		= OTHER.flags;
+			if (OTHER.is_stream_ready())
 			{
-				detach_from_transfer();
-			});
+				const_cast<MyStream&>(OTHER.get_stream()).add_chunk(*this);
+			}
+			return *this;
 		}
 
 		StreamChunk&				operator=(						StreamChunk&&			other) noexcept
 		{
-			MyLinkBase::operator=(std::move(other));
+			MyMemberBase::operator=(std::move(other));
 			range.swap(other.range);
-			container->swap(*other.container);
+			container.swap(other.container);
 			std::swap(flags, other.flags);
 			return *this;
 		}
 
 	public: // transfer functions
-		inline bool					is_connected_to_transfer() const
+		inline bool					is_stream_ready() const
 		{
-			return MyLinkBase::is_member();
+			return MyMemberBase::is_member();
 		}
 
-		inline MyTransfer&			get_transfer()
+		inline MyStream&			get_stream()
 		{
-			return *MyLinkBase::get_group();
+			return *MyMemberBase::get_group();
 		}
 
-		inline const MyTransfer&	get_transfer() const
+		inline const MyStream&		get_stream() const
 		{
-			return *MyLinkBase::get_group();
+			return *MyMemberBase::get_group();
 		}
 
-		void						detach_from_transfer()
+		void						detach_from_stream()
 		{
 			if(restore())
 			{
 				mark_as_resized();
-				MyLinkBase::detach();
+				MyMemberBase::detach();
 				flags.set_at(RESIZED,		false);
 				flags.set_at(NEEDS_FLUSH,	false);
 				flags.set_at(KEPT,			true);
@@ -303,7 +330,7 @@ namespace dpl
 		{
 			if(!flags.at(NEEDS_FLUSH)) return;
 
-			const MyTransfer&	TRANSFER = get_transfer();
+			const MyStream&	TRANSFER = get_stream();
 								TRANSFER.on_flush_array(range, container.data());
 			
 			flags.set_at(RESIZED,		false);
@@ -314,15 +341,15 @@ namespace dpl
 
 		bool						restore(						const bool				bMODIFIED_ON_RESIZE = false) const
 		{
-			if(!is_connected_to_transfer()) return false;
+			if(!is_stream_ready()) return false;
 			if(!flags.at(KEPT) && !flags.at(NEEDS_FLUSH))
 			{
 				container.reserve(size());
 				flags.set_at(RESIZED, false); //<-- Size was restored, any previous resize operation is lost.
 
-				const MyTransfer&	TRANSFER = get_transfer();
-									TRANSFER.on_restore_array(range, container.data());
-									TRANSFER.notify_modified();
+				const MyStream&	STREAM = get_stream();
+								STREAM.on_restore_array(range, container.data());
+								STREAM.notify_modified();
 
 				flags.set_at(NEEDS_FLUSH, true);
 			}
@@ -336,15 +363,15 @@ namespace dpl
 
 		inline void					request_flush()
 		{
-			if(!is_connected_to_transfer()) return;
+			if(!is_stream_ready()) return;
 			flags.set_at(NEEDS_FLUSH, true);
-			get_transfer().notify_modified();
+			get_stream().notify_modified();
 		}
 
 		inline void					request_new_offset()
 		{
-			if(!is_connected_to_transfer()) return;
-			get_transfer().notify_resized();
+			if(!is_stream_ready()) return;
+			get_stream().notify_resized();
 		}
 
 		inline void					mark_as_modified()
@@ -375,7 +402,7 @@ namespace dpl
 		Handles transfer of data packs.
 		Thread-safe as long as data is kept after flush.
 	*/
-	template<typename T>
+	template<is_Streamable T>
 	class	StreamController : private dpl::Group<StreamController<T>, StreamChunk<T>>
 	{
 	private: // subtypes
@@ -427,7 +454,7 @@ namespace dpl
 
 		StreamController&		operator=(				StreamController&&				other) noexcept
 		{
-			detach_all_arrays();
+			detach_all_chunks();
 			MyChainBase::operator=(std::move(other));
 			size				= other.size;
 			bKeepFlushedData	= other.bKeepFlushedData;
@@ -437,54 +464,50 @@ namespace dpl
 		}
 
 	public: // functions
-		inline bool				needs_update() const
+		bool					needs_update() const
 		{
 			return bResized.load(std::memory_order_relaxed) || bNeedsFlush.load(std::memory_order_relaxed);
 		}
 
-		inline bool				attach_array(			MyChunk&						chunk)
+		bool					add_chunk(				MyChunk&						chunk)
 		{
-			if(!std::is_trivially_destructible_v<T>)	return false;
-			if(!MyChainBase::attach_back(chunk))		return false;
+			if(!MyChainBase::attach_back(chunk)) return false;
 			chunk.flags.set_at(TransferFlags::KEPT, bKeepFlushedData);
 			notify_resized();
 			return true;
 		}
 
-		inline void				for_each_array(			const Callback&					FUNCTION)
+		void					for_each_chunk(			const Callback&					FUNCTION)
 		{
 			MyChainBase::iterate_forward(FUNCTION);
 		}
 
-		inline void				for_each_array(			const ConstCallback&			FUNCTION) const
+		void					for_each_chunk(			const ConstCallback&			FUNCTION) const
 		{
 			MyChainBase::iterate_forward(FUNCTION);
 		}
 
-		inline void				detach_array(			MyChunk&						chunk)
+		void					detach_chunk(			MyChunk&						chunk)
 		{
-			if(chunk.is_linked_to(*this)) chunk.detach_from_transfer();
+			if(chunk.is_linked_to(*this)) chunk.detach_from_stream();
 		}
 
-		inline void				detach_all_arrays()
+		void					detach_all_chunks()
 		{
 			while(MyChunk* current = MyChainBase::first())
 			{
-				detach_array(*current);
+				detach_chunk(*current);
 			}
 		}
 
 	protected: // functions
-		/*
-			Returns true if transfer was performed.
-		*/
 		void					update() const
 		{
 			update_size();
 
 			if(bNeedsFlush.load(std::memory_order_relaxed)) //<-- At least one array needs flush.
 			{
-				StreamController::for_each_array([&](const MyChunk& PACK)
+				StreamController::for_each_chunk([&](const MyChunk& PACK)
 				{
 					PACK.flush();
 				});
@@ -499,31 +522,31 @@ namespace dpl
 		virtual void			on_resized() const{}
 
 		virtual void			on_flush_array(			const dpl::IndexRange<uint32_t>	RANGE,
-														const T*						DATA) const{}
+														const T*						SOURCE) const{}
 
 		virtual void			on_restore_array(		const dpl::IndexRange<uint32_t>	RANGE,
-														T*								data) const{}
+														T*								target) const{}
 
 		virtual void			on_updated() const{}
 
 	private: // functions
-		inline void				notify_resized() const
+		void					notify_resized() const
 		{
 			bResized.store(true, std::memory_order_relaxed);
 		}
 
-		inline void				notify_modified() const
+		void					notify_modified() const
 		{
 			bNeedsFlush.store(true, std::memory_order_relaxed);
 			on_transfer_requested();
 		}
 
-		inline void				update_size() const
+		void					update_size() const
 		{
 			if(bResized.load(std::memory_order_relaxed))
 			{
 				size = 0;
-				StreamController::for_each_array([&](const MyChunk& PACK)
+				StreamController::for_each_chunk([&](const MyChunk& PACK)
 				{
 					PACK.restore(true); //<-- Make sure that data is restored before next flush.
 					*size += PACK.update_range(size);

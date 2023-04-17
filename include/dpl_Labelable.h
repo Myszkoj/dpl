@@ -52,21 +52,24 @@ namespace dpl
 	template<is_character T>
 	class	Labeler : private Archive<Labelable<T>, typename Label<T>::Type>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MyLabel		= typename Label<T>::Type;
 		using	MyLabelable	= Labelable<T>;
 		using	MyBase		= Archive<MyLabelable, MyLabel>;
 
-	public: // constants
+	public:		// [FRIENDS]
+		friend	MyLabelable;
+
+	public:		// [CONSTANTS]
 		static const uint32_t	MIN_CHARACTERS	= 2;
 		static const uint32_t	MAX_CHARACTERS	= 256;
 
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using Indexer		= std::function<uint32_t()>;
 		using MyBase::find_entry;
 		using MyBase::reserve;
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		CLASS_CTOR				Labeler() = default;
 
 		CLASS_CTOR				Labeler(				const Labeler&			OTHER) = delete;
@@ -85,7 +88,7 @@ namespace dpl
 			return *this;
 		}
 
-	public: // functions
+	public:		// [FUNCTIONS]
 		inline void				label(					MyLabelable&			labelable,
 														const MyLabel&			LABEL)
 		{
@@ -135,7 +138,7 @@ namespace dpl
 			return LABEL + std::to_string(UINT_DIST(rng));
 		}	
 
-	private: // functions
+	private:	// [FUNCTIONS]
 		inline bool				is_valid_numCharacters(	const uint32_t			NUM_CHARACTERS) const
 		{
 			return NUM_CHARACTERS >= MIN_CHARACTERS && NUM_CHARACTERS <= MAX_CHARACTERS;
@@ -179,7 +182,7 @@ namespace dpl
 			return false;
 		}
 
-	private: // exceptions
+	private:	// [EXCEPTIONS]
 		inline void				throw_name_invalid(		const MyLabel&			LABEL) const
 		{
 			throw GeneralException(this, __LINE__, "Invalid number of characters in the given name: " + LABEL);

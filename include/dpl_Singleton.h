@@ -79,6 +79,8 @@ namespace dpl
 	/*
 		Assures that only one instance of the given type is created.
 		Note: In case of the DLL, class T should synchronize its resources with the multition.
+
+		TODO: @at -rdynamic flag
 	*/
 	template<class T>
 	class Singleton

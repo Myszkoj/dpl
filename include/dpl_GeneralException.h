@@ -51,6 +51,13 @@ namespace dpl
 
 		}
 
+		CLASS_CTOR							GeneralException(	const int				LINE, 
+																const char*				FORMAT, ...)
+			: Base(line_message(LINE) + format_str(FORMAT) + end_line())
+		{
+
+		}
+
 		template<class T>
 		CLASS_CTOR							GeneralException(	const T*				CLASS_TYPE_DUMMY, 
 																const std::string&		MESSAGE)
