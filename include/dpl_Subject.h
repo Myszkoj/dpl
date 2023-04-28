@@ -9,13 +9,14 @@
 // declarations
 namespace dpl
 {
+	constexpr uint32_t SUBJECT_GROUP_ID = 1000000;
+
+
 	template<typename SubjectT>
 	class Subject;
 
 	template<typename SubjectT>
 	class Observer;
-
-	constexpr uint32_t SUBJECT_CHAIN_ID = 1000000;
 }
 
 // implementations
@@ -26,18 +27,19 @@ namespace dpl
 	*/
 	template<typename SubjectT>
 	class Subject	: public Unique<Subject<SubjectT>> 
-					, private Group<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>
+					, private Group<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_GROUP_ID>
 	{
-	private: // subtypes
-		using MyObserver	= Observer<SubjectT>;
-		using MyUnique		= Unique<Subject<SubjectT>>;
-		using MyGroup		= Group<Subject<SubjectT>, MyObserver, SUBJECT_CHAIN_ID>;
+	private:	// [SUBTYPES]
+		using	MyObserver	= Observer<SubjectT>;
+		using	MyUnique	= Unique<Subject<SubjectT>>;
+		using	MyGroup		= Group<Subject<SubjectT>, MyObserver, SUBJECT_GROUP_ID>;
 
-	public: // relations
-		friend MyObserver;
-		friend MyGroup;
+	public:		// [FRIENDS]
+		friend	MyObserver;
+		friend	MyObserver::MyBase;
+		friend	MyGroup;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR				Subject() = default;
 
 		CLASS_CTOR				Subject(		const Subject&		OTHER) = delete;
@@ -51,10 +53,10 @@ namespace dpl
 
 		CLASS_DTOR				~Subject()
 		{
-			remove_all_observers();
+			dpl::no_except([&](){ remove_all_observers(); });
 		}
 
-		inline Subject&			operator=(		const Subject&		OTHER) = delete;
+		Subject&				operator=(		const Subject&		OTHER) = delete;
 
 		Subject&				operator=(		Subject&&			other) noexcept
 		{
@@ -64,25 +66,25 @@ namespace dpl
 			return *this;
 		}
 
-		inline Subject&			operator=(		Swap<Subject>		other)
+		Subject&				operator=(		Swap<Subject>		other)
 		{
 			MyUnique::operator=(std::move(*other));
 			MyGroup::operator=(Swap(static_cast<MyGroup&>(*other.get())));
 			return *this;
 		}
 
-		inline Subject&			operator=(		Swap<SubjectT>		other)
+		Subject&				operator=(		Swap<SubjectT>		other)
 		{
 			return operator=(Swap<Subject>(*other));
 		}
 
-	protected: // functions
-		inline bool				is_observed() const
+	protected:	// [FUNCTIONS]
+		bool					is_observed() const
 		{
 			return MyGroup::size() > 0;
 		}
 
-		inline void				notify_observers()
+		void					notify_observers()
 		{
 			SubjectT& subject = *cast();
 			MyGroup::for_each_link([&](MyObserver& observer)
@@ -91,7 +93,7 @@ namespace dpl
 			});
 		}
 
-		inline void				remove_all_observers()
+		void					remove_all_observers()
 		{
 			while(MyObserver* observer = MyGroup::first())
 			{
@@ -99,18 +101,18 @@ namespace dpl
 			}
 		}
 
-	private: // functions
-		inline SubjectT*		cast()
+	private:	// [FUNCTIONS]
+		SubjectT*				cast()
 		{
 			return static_cast<SubjectT*>(this);
 		}
 
-		inline const SubjectT*	cast() const
+		const SubjectT*			cast() const
 		{
 			return static_cast<const SubjectT*>(this);
 		}
 
-	private: // interface
+	private:	// [INTERFACE]
 		virtual void			on_observers_changed(){}
 	};
 
@@ -119,19 +121,24 @@ namespace dpl
 		Person/device that observes the Subject.
 	*/
 	template<typename SubjectT>
-	class Observer : private Member<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>
+	class Observer : private Member<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_GROUP_ID>
 	{
-	private: // subtypes
-		using MySubject = Subject<SubjectT>;
-		using MyBase	= Member<MySubject, Observer<SubjectT>, SUBJECT_CHAIN_ID>;
+	private:	// [SUBTYPES]
+		using	MySubject	= Subject<SubjectT>;
+		using	MyBase		= Member<MySubject, Observer<SubjectT>, SUBJECT_GROUP_ID>;
 
-	public: // relations
-		friend MySubject;
-		friend MyBase;
-		friend Group<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_CHAIN_ID>;
-		friend Sequenceable<Observer<SubjectT>, SUBJECT_CHAIN_ID>;
+	public:		// [SUBTYPES]
+		using	MyLink		= Link<Observer<SubjectT>, SUBJECT_GROUP_ID>;
 
-	protected: // lifecycle
+	public:		// [FRIENDS]
+		friend	MySubject;
+		friend	MyBase;
+		friend	MyLink;
+
+		friend	Group<Subject<SubjectT>, Observer<SubjectT>, SUBJECT_GROUP_ID>;
+		friend	Sequenceable<Observer<SubjectT>, SUBJECT_GROUP_ID>;
+
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR					Observer() = default;
 
 		CLASS_CTOR					Observer(			const Observer&		OTHER) = delete;
@@ -146,7 +153,7 @@ namespace dpl
 		{
 			dpl::no_except([&]()
 			{
-				if(MySubject* subject = MyBase::get_chain())
+				if(MySubject* subject = MyBase::get_group())
 				{
 					MyBase::detach();
 					subject->on_observers_changed();
@@ -154,7 +161,7 @@ namespace dpl
 			});
 		}
 
-		inline Observer&			operator=(			const Observer&		OTHER) = delete;
+		Observer&					operator=(			const Observer&		OTHER) = delete;
 
 		Observer&					operator=(			Observer&&			other) noexcept
 		{
@@ -163,26 +170,26 @@ namespace dpl
 			return *this;
 		}
 
-		inline Observer&			operator=(			Swap<Observer>		other)
+		Observer&					operator=(			Swap<Observer>		other)
 		{
 			MyBase::operator=(Swap(static_cast<MyBase&>(*other.get())));
 			return *this;
 		}
 
-	protected: // functions
-		inline void					observe(			MySubject&			subject)
+	protected:	// [FUNCTIONS]
+		void						observe(			MySubject&			subject)
 		{
-			if(!MyBase::is_linked(subject))
+			if(!MyBase::is_member_of(subject))
 			{
-				subject.attach_back(*this);
+				subject.add_end_member(*this);
 				subject.on_observers_changed();
 				this->on_observe(*subject.cast());
 			}
 		}
 
-		inline void					stop_observation()
+		void						stop_observation()
 		{
-			if(MySubject* subject = MyBase::get_chain())
+			if(MySubject* subject = MyBase::get_group())
 			{
 				const uint32_t SUBJECT_ID = subject->ID();
 				MyBase::detach();
@@ -191,24 +198,24 @@ namespace dpl
 			}
 		}
 
-		inline bool					has_subject() const
+		bool						has_subject() const
 		{
-			return MyBase::is_linked();
+			return MyBase::is_member();
 		}
 
-		inline SubjectT*			get_subject()
+		SubjectT*					get_subject()
 		{
-			Subject<SubjectT>* subject = MyBase::get_chain();
+			Subject<SubjectT>* subject = MyBase::get_group();
 			return subject ? subject->cast() : nullptr;
 		}
 
-		inline const SubjectT*		get_subject() const
+		const SubjectT*				get_subject() const
 		{
-			const Subject<SubjectT>* SUBJECT = MyBase::get_chain();
+			const Subject<SubjectT>* SUBJECT = MyBase::get_group();
 			return SUBJECT ? SUBJECT->cast() : nullptr;
 		}
 
-	private: // interface
+	private:	// [INTERFACE]
 		virtual void				on_observe(			SubjectT&			subject){}
 
 		virtual void				on_update(			SubjectT&			subject){}

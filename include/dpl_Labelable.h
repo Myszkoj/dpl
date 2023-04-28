@@ -82,14 +82,14 @@ namespace dpl
 
 		Labeler&				operator=(				Labeler&&				other) noexcept = default;
 
-		inline Labeler&			operator=(				Swap<Labeler>&			other)
+		Labeler&				operator=(				Swap<Labeler>&			other)
 		{
 			MyBase::operator=(Swap<MyBase>(*other));
 			return *this;
 		}
 
 	public:		// [FUNCTIONS]
-		inline void				label(					MyLabelable&			labelable,
+		void					label(					MyLabelable&			labelable,
 														const MyLabel&			LABEL)
 		{
 			if(!is_valid_numCharacters((uint32_t)LABEL.size())) throw_name_invalid(LABEL);
@@ -107,31 +107,31 @@ namespace dpl
 			throw_name_generation_failed();
 		}
 
-		inline void				label_with_postfix(		MyLabelable&			labelable,
+		void					label_with_postfix(		MyLabelable&			labelable,
 														const MyLabel&			LABEL,
 														const uint32_t			MAX_RANDOM_ATTEMPTS = 10)
 		{
 			return label_with_postfix(labelable, LABEL, get_default_indexer(), MAX_RANDOM_ATTEMPTS);
 		}
 
-		inline std::string		generate_indexed_label(	const MyLabel&			LABEL,
+		std::string				generate_indexed_label(	const MyLabel&			LABEL,
 														const Indexer&			INDEXER) const
 		{
 			return LABEL + std::to_string(INDEXER());
 		}
 
-		inline std::string		generate_indexed_label(	const MyLabel&			LABEL) const
+		std::string				generate_indexed_label(	const MyLabel&			LABEL) const
 		{
 			return LABEL + std::to_string(get_default_indexer());
 		}
 
-		inline std::string		generate_pointer_label(	const MyLabel&			LABEL,
+		std::string				generate_pointer_label(	const MyLabel&			LABEL,
 														const void*				ADDRESS) const
 		{
 			return LABEL + std::to_string(uint64_t(ADDRESS));
 		}
 
-		inline std::string		generate_random_label(	const MyLabel&			LABEL) const
+		std::string				generate_random_label(	const MyLabel&			LABEL) const
 		{
 			thread_local std::uniform_int_distribution<uint64_t> UINT_DIST;
 			thread_local std::mt19937	rng;
@@ -139,37 +139,37 @@ namespace dpl
 		}	
 
 	private:	// [FUNCTIONS]
-		inline bool				is_valid_numCharacters(	const uint32_t			NUM_CHARACTERS) const
+		bool					is_valid_numCharacters(	const uint32_t			NUM_CHARACTERS) const
 		{
 			return NUM_CHARACTERS >= MIN_CHARACTERS && NUM_CHARACTERS <= MAX_CHARACTERS;
 		}
 
-		inline const Indexer	get_default_indexer()
+		const Indexer			get_default_indexer()
 		{
 			// Delegated to a function because compiler complains about the same function name.
 			return [&](){return MyBase::get_numEntries();};
 		}
 
-		inline bool				label_internal(			MyLabelable&			labelable,
+		bool					label_internal(			MyLabelable&			labelable,
 														const MyLabel&			LABEL)
 		{
 			return MyBase::add_entry(labelable, LABEL);
 		}
 
-		inline bool				label_by_index(			MyLabelable&			labelable,
+		bool					label_by_index(			MyLabelable&			labelable,
 														const MyLabel&			LABEL,
 														const Indexer&			INDEXER)
 		{
 			return label_internal(labelable, generate_indexed_label(LABEL, INDEXER));
 		}
 
-		inline bool				label_by_pointer(		MyLabelable&			labelable,
+		bool					label_by_pointer(		MyLabelable&			labelable,
 														const MyLabel&			LABEL)
 		{
 			return label_internal(labelable, LABEL + generate_pointer_label(LABEL, &labelable));
 		}
 
-		inline bool				label_by_random(		MyLabelable&			labelable,
+		bool					label_by_random(		MyLabelable&			labelable,
 														const MyLabel&			LABEL,
 														uint32_t				attempts = 10)
 		{
@@ -183,17 +183,17 @@ namespace dpl
 		}
 
 	private:	// [EXCEPTIONS]
-		inline void				throw_name_invalid(		const MyLabel&			LABEL) const
+		void					throw_name_invalid(		const MyLabel&			LABEL) const
 		{
 			throw GeneralException(this, __LINE__, "Invalid number of characters in the given name: " + LABEL);
 		}
-
-		inline void				throw_name_not_unique(	const MyLabel&			LABEL) const
+			
+		void					throw_name_not_unique(	const MyLabel&			LABEL) const
 		{
 			throw GeneralException(this, __LINE__, "Given name is already taken: " + LABEL);
 		}
 
-		inline void				throw_name_generation_failed() const
+		void					throw_name_generation_failed() const
 		{
 			throw GeneralException(this, __LINE__, "Cannot generate unique name.");
 		}
@@ -234,7 +234,7 @@ namespace dpl
 		}
 
 	public: // functions
-		inline bool					has_label() const
+		bool						has_label() const
 		{
 			return MyEntryType::other() != nullptr;
 		}
@@ -255,17 +255,17 @@ namespace dpl
 		}
 
 	protected: // functions
-		inline MyLabeler*			get_labeler()
+		MyLabeler*					get_labeler()
 		{
 			return static_cast<MyLabeler*>(MyEntryType::archive());
 		}
 
-		inline const MyLabeler*		get_labeler() const
+		const MyLabeler*			get_labeler() const
 		{
 			return static_cast<const MyLabeler*>(MyEntryType::archive());
 		}
 
-		inline bool					change_label(				const MyLabel&			NEW_NAME)
+		bool						change_label(				const MyLabel&			NEW_NAME)
 		{
 			return NEW_NAME.size() > 0 ? MyEntryType::change_key_value(NEW_NAME) : false;
 		}

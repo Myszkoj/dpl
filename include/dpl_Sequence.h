@@ -22,69 +22,90 @@ namespace dpl
 	template<typename T, uint32_t ID>
 	class Sequenceable	: private Link<T, ID>
 	{
-	private: // subtypes
+	protected:	// [SUBTYPES]
 		using	MyBase		= Link<T, ID>;
 		using	MySequence	= Sequence<T, ID>;
 
-	public: // friends
+	public:		// [FRIENDS]
 		friend	MyBase;
 		friend	MySequence;
 
-	private: // functions
+	private:	// [HIDDEN]
 		using	MyBase::attach;
 
-	protected: // lifecycle
-		CLASS_CTOR				Sequenceable() = default;
-		CLASS_CTOR				Sequenceable(	const Sequenceable&		OTHER) = delete;
-		CLASS_CTOR				Sequenceable(	Sequenceable&&			other) noexcept = default;
-		Sequenceable&			operator=(		const Sequenceable&		OTHER) = delete;
-		Sequenceable&			operator=(		Sequenceable&&			other) noexcept = default;
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR			Sequenceable() = default;
+		CLASS_CTOR			Sequenceable(	const Sequenceable&		OTHER) = delete;
+		CLASS_CTOR			Sequenceable(	Sequenceable&&			other) noexcept = default;
+		Sequenceable&		operator=(		const Sequenceable&		OTHER) = delete;
+		Sequenceable&		operator=(		Sequenceable&&			other) noexcept = default;
 
-		Sequenceable&			operator=(		Swap<Sequenceable>		other)
+		Sequenceable&		operator=(		Swap<Sequenceable>		other)
 		{
 			MyBase::operator=(Swap<MyBase>(*other));
 			return *this;
 		}
 
-		Sequenceable&			operator=(		Swap<T>					other)
+		Sequenceable&		operator=(		Swap<T>					other)
 		{
 			return operator=(Swap<Sequenceable>(*other));
 		}
 
-	public: // functions
-		inline bool				is_part_of_sequence() const
+	public:		// [FUNCTIONS]
+		bool				is_part_of_sequence() const
 		{
 			return MyBase::is_linked_to_any();
 		}
 
-		inline T*				previous(		const MySequence&		SEQUENCE)
+		T*					previous(		const MySequence&		SEQUENCE)
 		{
-			auto* prev = static_cast<Sequenceable*>(MyBase::get_raw_prev());
+			auto* prev = raw_previous();
 			return (SEQUENCE.is_end(prev)) ? nullptr : prev->cast();
 		}
 
-		inline const T*			previous(		const MySequence&		SEQUENCE) const
+		const T*			previous(		const MySequence&		SEQUENCE) const
 		{
-			const auto* PREV = static_cast<const Sequenceable*>(MyBase::get_raw_prev());
+			const auto* PREV = raw_previous();
 			return (SEQUENCE.is_end(PREV)) ? nullptr : PREV->cast();
 		}
 
-		inline T*				next(			const MySequence&		SEQUENCE)
+		T*					next(			const MySequence&		SEQUENCE)
 		{
-			auto* next = static_cast<Sequenceable*>(MyBase::get_raw_next());
+			auto* next = raw_next();
 			return (SEQUENCE.is_end(next)) ? nullptr : next->cast();
 		}
 
-		inline const T*			next(			const MySequence&		SEQUENCE) const
+		const T*			next(			const MySequence&		SEQUENCE) const
 		{
-			const auto* NEXT = static_cast<const Sequenceable*>(MyBase::get_raw_next());
+			const auto* NEXT = raw_next();
 			return (SEQUENCE.is_end(NEXT)) ? nullptr : NEXT->cast();
 		}
 
-	protected: // functions
-		inline void				remove_from_sequence()
+	protected:	// [FUNCTIONS]
+		void				remove_from_sequence()
 		{
 			MyBase::detach();
+		}
+
+	private:	// [FUNCTIONS]
+		Sequenceable*		raw_previous()
+		{
+			return static_cast<Sequenceable*>(MyBase::get_raw_prev());
+		}
+
+		const Sequenceable*	raw_previous() const
+		{
+			return static_cast<const Sequenceable*>(MyBase::get_raw_prev());
+		}
+
+		Sequenceable*		raw_next()
+		{
+			return static_cast<Sequenceable*>(MyBase::get_raw_next());
+		}
+
+		const Sequenceable*	raw_next() const
+		{
+			return static_cast<const Sequenceable*>(MyBase::get_raw_next());
 		}
 	};
 
@@ -95,21 +116,21 @@ namespace dpl
 	template<typename T, uint32_t ID>
 	class Sequence
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MySequenceable		= Sequenceable<T, ID>;
 		using	MyLink				= Link<T, ID>;
 
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using	Invoke				= std::function<void(T&)>;
 		using	InvokeConst			= std::function<void(const T&)>;
 		using	InvokeUntil			= std::function<bool(T&)>;
 		using	InvokeConstUntil	= std::function<bool(const T&)>;
 		using	NumInSequence		= uint32_t;
 
-	private: // data
+	private:	// [DATA]
 		MySequenceable	m_loop;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR				Sequence() = default;
 		CLASS_CTOR				Sequence(				const Sequence&				OTHER) = delete;
 		CLASS_CTOR				Sequence(				Sequence&&					other) noexcept = default;
@@ -123,7 +144,7 @@ namespace dpl
 			return *this;
 		}
 
-	public: // functions
+	public:		// [FUNCTIONS]
 		const T*				first() const
 		{
 			return m_loop.next(*this);
@@ -139,9 +160,7 @@ namespace dpl
 			return first() == nullptr;
 		}
 
-		/*
-			Returns true if object is a nullptr or it points to the internal loop object(end of the sequence).
-		*/
+		// Returns true if object is a nullptr or it points to the internal loop object(end of the sequence).
 		bool					is_end(					const MySequenceable*		OBJ) const
 		{
 			return OBJ == &m_loop || OBJ == nullptr;
@@ -149,11 +168,11 @@ namespace dpl
 
 		NumInSequence			iterate_forward(		const InvokeConst&			INVOKE) const
 		{
-			NumInSequence			count = 0;
-			const MySequenceable*	CURRENT = first();
+			NumInSequence			count	= 0;
+			const MySequenceable*	CURRENT = m_loop.raw_next();
 			while(!is_end(CURRENT))
 			{
-				const MySequenceable* NEXT = CURRENT->next(*this);
+				const MySequenceable* NEXT = CURRENT->raw_next();
 				INVOKE(*CURRENT->cast());
 				++count;
 				CURRENT = NEXT;
@@ -164,10 +183,10 @@ namespace dpl
 		NumInSequence			iterate_forward_until(	const InvokeConstUntil&		INVOKE) const
 		{
 			NumInSequence			count = 0;
-			const MySequenceable*	CURRENT = first();
+			const MySequenceable*	CURRENT = m_loop.raw_next();
 			while(!is_end(CURRENT))
 			{
-				const MySequenceable* NEXT = CURRENT->next(*this);
+				const MySequenceable* NEXT = CURRENT->raw_next();
 				++count;
 				if(INVOKE(*CURRENT->cast())) break;			
 				CURRENT = NEXT;
@@ -177,11 +196,11 @@ namespace dpl
 
 		NumInSequence			iterate_backwards(		const InvokeConst&			INVOKE) const
 		{
-			NumInSequence			count = 0;
-			const MySequenceable*	CURRENT = last();
+			NumInSequence			count	= 0;
+			const MySequenceable*	CURRENT = m_loop.raw_previous();
 			while(!is_end(CURRENT))
 			{
-				const MySequenceable* NEXT = CURRENT->previous(*this);
+				const MySequenceable* NEXT = CURRENT->raw_previous();
 				INVOKE(*CURRENT->cast());
 				++count;
 				CURRENT = NEXT;
@@ -191,11 +210,11 @@ namespace dpl
 
 		NumInSequence			iterate_backwards_until(const InvokeConstUntil&		INVOKE) const
 		{
-			NumInSequence			count = 0;
-			const MySequenceable*	CURRENT = last();
+			NumInSequence			count	= 0;
+			const MySequenceable*	CURRENT = m_loop.raw_previous();
 			while(!is_end(CURRENT))
 			{
-				const MySequenceable* NEXT = CURRENT->previous(*this);
+				const MySequenceable* NEXT = CURRENT->raw_previous(*this);
 				++count;
 				if(INVOKE(*CURRENT->cast())) break;			
 				CURRENT = NEXT;
@@ -213,7 +232,7 @@ namespace dpl
 			return Sequence::iterate_forward_until(INVOKE);
 		}
 
-	protected: // functions
+	protected:	// [FUNCTIONS]
 		T*						first()
 		{
 			return m_loop.next(*this);
@@ -224,39 +243,24 @@ namespace dpl
 			return m_loop.previous(*this);
 		}
 
-		/*
-			Adds given object at the front of the sequence.
-		*/
 		void					add_front(				MySequenceable&				newObject)
 		{
-			if(MySequenceable* next = first())
-			{
-				newObject.attach(m_loop, *next);
-			}
-			else
-			{
-				newObject.attach(m_loop, m_loop);
-			}			
+			MySequenceable* next = m_loop.raw_next();
+			is_end(next)? newObject.attach(m_loop, m_loop)
+						: newObject.attach(m_loop, *next);			
 		}
 
-		/*
-			Adds given object at the end of the sequence.
-		*/
 		void					add_back(				MySequenceable&				newObject)
 		{
-			if(MySequenceable* prev = last())
-			{
-				newObject.attach(*prev, m_loop);
-			}
-			else
-			{
-				newObject.attach(m_loop, m_loop);
-			}
+			MySequenceable* prev = m_loop.raw_previous();
+			is_end(prev)? newObject.attach(m_loop, m_loop)
+						: newObject.attach(*prev, m_loop);
 		}
 
 		void					remove_all()
 		{
-			while(MySequenceable* current = first())
+			MySequenceable* current = m_loop.raw_next();
+			while(!is_end(current))
 			{
 				current->remove_from_sequence();
 			}
@@ -265,10 +269,10 @@ namespace dpl
 		NumInSequence			iterate_forward(		const Invoke&				INVOKE)
 		{
 			NumInSequence	count	= 0;
-			MySequenceable* current = first();
+			MySequenceable* current = m_loop.raw_next();
 			while(!is_end(current))
 			{
-				MySequenceable* next = current->next(*this);
+				MySequenceable* next = current->raw_next();
 				INVOKE(*current->cast());
 				++count;
 				current = next;
@@ -279,10 +283,10 @@ namespace dpl
 		NumInSequence			iterate_forward_until(	const InvokeUntil&			INVOKE)
 		{
 			NumInSequence	count	= 0;
-			MySequenceable* current = first();
+			MySequenceable* current = m_loop.raw_next();
 			while(!is_end(current))
 			{
-				MySequenceable* next = current->next(*this);
+				MySequenceable* next = current->raw_next();
 				++count;
 				if(INVOKE(*current->cast())) break;			
 				current = next;
@@ -293,10 +297,10 @@ namespace dpl
 		NumInSequence			iterate_backwards(		const Invoke&				INVOKE)
 		{
 			NumInSequence	count	= 0;
-			MySequenceable* current = last();
+			MySequenceable* current = m_loop.raw_previous();
 			while(!is_end(current))
 			{
-				MySequenceable* next = current->previous(*this);
+				MySequenceable* next = current->raw_previous();
 				INVOKE(*current->cast());
 				++count;
 				current = next;
@@ -307,10 +311,10 @@ namespace dpl
 		NumInSequence			iterate_backwards_until(const InvokeUntil&			INVOKE)
 		{
 			NumInSequence	count	= 0;
-			MySequenceable* current = last();
+			MySequenceable* current = m_loop.raw_previous();
 			while(!is_end(current))
 			{
-				MySequenceable* next = current->previous(*this);
+				MySequenceable* next = current->raw_previous();
 				++count;
 				if(INVOKE(*current->cast())) break;			
 				current = next;
@@ -336,7 +340,7 @@ namespace dpl
 		uint32_t				sort(					CompT&&						COMPARE)
 		{
 			uint32_t	numSwapps	= 0;
-			MyLink*		current		= first();
+			MyLink*		current		= m_loop.raw_next();
 
 			while(!is_end(current))
 			{

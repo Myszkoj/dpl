@@ -333,24 +333,24 @@ namespace dpl
 	template<typename VariationT, typename VariantT>
 	class Variant : public VirtualConstructable<Variant<VariationT, VariantT>, const typename Variation<VariationT, VariantT>::Binding&>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MyVariation	= Variation<VariationT, VariantT>;
 
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using	VCTOR_Base	= VirtualConstructable<Variant<VariationT, VariantT>, const typename Variation<VariationT, VariantT>::Binding&>;
 		using	Binding		= typename MyVariation::Binding;
 
-	public: // relations
+	public:		// [FRIENDS]
 		friend	MyVariation;
 		friend	VariationT; //<-- Gives access to import_from/export_to functions.
 
-	private: // data
+	private:	// [DATA]
 		ReadOnly<MyVariation*,	MyVariation> variation;
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		CLASS_DTOR virtual			~Variant() = default;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR					Variant(		const Binding&		BINDING)
 			: variation(BINDING.owner())
 		{
@@ -365,36 +365,39 @@ namespace dpl
 
 		Variant&					operator=(		Variant&&			other) noexcept = delete;
 
-	public: // functions
-		inline bool					has_variation() const
+	public:		// [OWNER ACCESS]
+		bool						has_variation() const
 		{
 			return variation() != nullptr;
 		}
 
-		inline VariationT&			get_variation()
+		VariationT&					get_variation()
 		{
 			return *variation()->cast();
 		}
 
-		inline const VariationT&	get_variation() const
+		const VariationT&			get_variation() const
 		{
 			return *variation()->cast();
 		}
 
-		inline VariantT*			cast()
+	public:		// [CASTING]
+		VariantT*					cast()
 		{
 			return static_cast<VariantT*>(this);
 		}
 
-		inline const VariantT*		cast() const
+		const VariantT*				cast() const
 		{
 			return static_cast<const VariantT*>(this);
 		}
 
-	protected: // functions
-		inline bool					selfdestruct()
+	protected:	// [OTHER]
+
+		// unsafe
+		/*bool						selfdestruct()
 		{
 			return this->has_variation() ? variation()->destroy_variant_internal(typeid(*this)) : false;
-		}
+		}*/
 	};
 }

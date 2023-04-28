@@ -26,22 +26,22 @@ namespace dpl
 	template<typename GroupT, typename MemberT, uint32_t ID>
 	class Member : private Sequenceable<MemberT, ID>
 	{
-	protected: // subtypes
+	protected:	// [SUBTYPES]
 		using	MyBase		= Sequenceable<MemberT, ID>;
 		using	MySequence	= Sequence<MemberT, ID>;
 		using	MyLink		= Link<MemberT, ID>;
 		using	MyGroup		= Group<GroupT, MemberT, ID>;
 
-	public: // relations
+	public:		// [FRIENDS]
 		friend	MyBase;
 		friend	MySequence;
 		friend	MyLink;
 		friend	MyGroup;
 
-	private: // data
+	private:	// [DATA]
 		MyGroup* m_group;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR				Member()
 			: m_group(nullptr)
 		{
@@ -79,56 +79,56 @@ namespace dpl
 			return *this;
 		}
 
-		inline Member&			operator=(		Swap<Member>		other)
+		Member&					operator=(		Swap<Member>		other)
 		{
 			MyBase::operator=(Swap(static_cast<MyBase&>(*other.get())));
 			std::swap(m_group, other->m_group);
 			return *this;
 		}
 
-		inline Member&			operator=(		Swap<MemberT>		other)
+		Member&					operator=(		Swap<MemberT>		other)
 		{
 			return operator=(Swap<Member>(*other));
 		}
 
-	public: // functions
-		inline MemberT*			previous()
+	public:		// [FUNCTIONS]
+		MemberT*				previous()
 		{
 			return m_group ? static_cast<MemberT*>(MyBase::previous(*m_group)) : nullptr;
 		}
 
-		inline const MemberT*	previous() const
+		const MemberT*			previous() const
 		{
 			return m_group ? static_cast<const MemberT*>(MyBase::previous(*m_group)) : nullptr;
 		}
 
-		inline MemberT*			next()
+		MemberT*				next()
 		{
 			return m_group ? static_cast<MemberT*>(MyBase::next(*m_group)) : nullptr;
 		}
 
-		inline const MemberT*	next() const
+		const MemberT*			next() const
 		{
 			return m_group ? static_cast<const MemberT*>(MyBase::next(*m_group)) : nullptr;
 		}
 
-		inline bool				is_member() const
+		bool					is_member() const
 		{
 			return MyBase::is_part_of_sequence();
 		}
 
-		inline bool				is_member_of(	const MyGroup&		GROUP) const
+		bool					is_member_of(	const MyGroup&		GROUP) const
 		{
 			return m_group == &GROUP;
 		}
 
-		inline const GroupT*	get_group() const
+		const GroupT*			get_group() const
 		{
 			return m_group ? m_group->cast() : nullptr;
 		}
 
-	protected: // functions
-		inline GroupT*			get_group()
+	protected:	// [FUNCTIONS]
+		GroupT*					get_group()
 		{
 			return m_group ? m_group->cast() : nullptr;
 		}
@@ -136,24 +136,24 @@ namespace dpl
 		/*
 			Remove this link from the chain.
 		*/
-		inline void				detach()
+		void					detach()
 		{
 			invalidate_membership();
 			MyBase::remove_from_sequence();
 		}
 
-	private: // functions
-		inline MemberT*			cast()
+	private:	// [FUNCTIONS]
+		MemberT*				cast()
 		{
 			return static_cast<MemberT*>(this);
 		}
 
-		inline const MemberT*	cast() const
+		const MemberT*			cast() const
 		{
 			return static_cast<const MemberT*>(this);
 		}
 
-		inline void				invalidate_membership()
+		void					invalidate_membership()
 		{
 			if(m_group)
 			{
@@ -170,24 +170,24 @@ namespace dpl
 	template<typename GroupT, typename MemberT, uint32_t ID>
 	class Group : public Sequence<MemberT, ID>
 	{
-	protected: // subtypes
+	protected:	// [SUBTYPES]
 		using	MyBase		= Sequence<MemberT, ID>;
 		using	MyMember	= Member<GroupT, MemberT, ID>;
 
-	public: // friends
+	public:		// [FRIENDS]
 		friend	MyBase;
 		friend	MyMember;
 
-	public: // subtypes
+	public:		// SUBTYPES
 		using	Invoke				= std::function<void(MemberT&)>;
 		using	InvokeConst			= std::function<void(const MemberT&)>;
 		using	InvokeUntil			= std::function<bool(MemberT&)>;
 		using	InvokeConstUntil	= std::function<bool(const MemberT&)>;
 
-	private: // data
+	private:	// [DATA]
 		uint32_t m_numMembers;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR				Group()
 			: m_numMembers(0)
 		{
@@ -209,7 +209,7 @@ namespace dpl
 			dpl::no_except([&](){	remove_all_members();	});
 		}
 
-		inline Group&			operator=(				const Group&				OTHER) = delete;
+		Group&					operator=(				const Group&				OTHER) = delete;
 
 		Group&					operator=(				Group&&						other) noexcept
 		{
@@ -229,16 +229,16 @@ namespace dpl
 			return *this;
 		}
 
-		inline Group&			operator=(				Swap<GroupT>				other)
+		Group&					operator=(				Swap<GroupT>				other)
 		{
 			return operator=(Swap<Group>(*other));
 		}
 
-	public: // functions
+	public:		// [FUNCTIONS]
 		/*
 			Returns number of links in this chain.
 		*/
-		inline uint32_t			size() const
+		uint32_t				size() const
 		{
 			return m_numMembers;
 		}
@@ -246,12 +246,12 @@ namespace dpl
 		/*
 			Returns true if object is a nullptr or it points to the internal loop object(end of the sequence).
 		*/
-		inline bool				is_end(					const MyMember*				MEMBER) const
+		bool					is_end(					const MyMember*				MEMBER) const
 		{
 			return MyBase::is_end(MEMBER);
 		}
 
-		inline uint32_t			for_each_member(		const InvokeConst&			INVOKE) const
+		uint32_t				for_each_member(		const InvokeConst&			INVOKE) const
 		{
 			return MyBase::for_each(INVOKE);
 		}
@@ -260,12 +260,12 @@ namespace dpl
 			Invokes all members in a group until given function returns false.
 			Returns number of function calls.
 		*/
-		inline uint32_t			for_each_member_until(	const InvokeConstUntil&		INVOKE) const
+		uint32_t				for_each_member_until(	const InvokeConstUntil&		INVOKE) const
 		{
 			return MyBase::for_each_until(INVOKE);
 		}
 
-	protected: // functions
+	protected:	// [FUNCTIONS]
 		/*
 			Adds given member at the front of the group.
 			Returns false if member is already attached.
@@ -302,7 +302,7 @@ namespace dpl
 			return false;
 		}
 
-		inline uint32_t			for_each_member(		const Invoke&				INVOKE)
+		uint32_t				for_each_member(		const Invoke&				INVOKE)
 		{
 			return MyBase::for_each(INVOKE);
 		}
@@ -311,12 +311,12 @@ namespace dpl
 			Invokes all members in a group until given function returns false.
 			Returns number of function calls.
 		*/
-		inline uint32_t			for_each_member_until(	const InvokeUntil&			INVOKE)
+		uint32_t				for_each_member_until(	const InvokeUntil&			INVOKE)
 		{
 			return MyBase::for_each_until(INVOKE);
 		}
 
-		inline bool				remove_member(			MyMember&					member)
+		bool					remove_member(			MyMember&					member)
 		{
 			if(!member.is_member_of(*this)) return false;
 			member.detach();
@@ -335,13 +335,13 @@ namespace dpl
 			return true;
 		}
 
-	private: // functions
-		inline GroupT*			cast()
+	private:	// [FUNCTIONS]
+		GroupT*					cast()
 		{
 			return static_cast<GroupT*>(this);
 		}
 
-		inline const GroupT*	cast() const
+		const GroupT*			cast() const
 		{
 			return static_cast<const GroupT*>(this);
 		}
@@ -349,7 +349,7 @@ namespace dpl
 		/*
 			Updates pointer-to-group for each attached member.
 		*/
-		inline void				update_members()
+		void					update_members()
 		{
 			Group::for_each_member([&](MemberT& link)
 			{
@@ -357,7 +357,7 @@ namespace dpl
 			});
 		}
 
-	private: // hidden functions
+	private:	// [HIDDEN]
 		using MyBase::add_front;
 		using MyBase::add_back;
 		using MyBase::remove_all;

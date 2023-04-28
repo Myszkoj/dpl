@@ -311,7 +311,7 @@ namespace dpl
 	// Wrapps name convention of the entity and typeID of the buffer that stores it.
 	class	Origin
 	{
-	public: // friends
+	public:		// [FRIENDS]
 		friend Identity;
 
 		template<typename>
@@ -320,21 +320,21 @@ namespace dpl
 		template<typename>
 		friend class EntityPack_of;
 
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	Labelable_t	= dpl::Labelable<char>;
 		using	Labeler_t	= dpl::Labeler<char>;
 
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using	StorageID	= uint32_t;
 
-	public: // data
+	public:		// [DATA]
 		dpl::ReadOnly<Name,			Origin> name;
 		dpl::ReadOnly<StorageID,	Origin> storageID;
 
-	private: // data
+	private:	// [DATA]
 		dpl::ReadOnly<Labeler_t*,	Origin> labeler;
 
-	private: // lifecycle
+	private:	// [LIFECYCLE]
 		CLASS_CTOR Origin(	const Name&		NAME,
 							const StorageID	STORAGE_ID,
 							Labeler_t&		labeler)

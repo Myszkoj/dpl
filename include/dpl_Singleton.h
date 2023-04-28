@@ -133,13 +133,13 @@ namespace dpl
 		}
 
 	public: // functions
-		inline Multition&	owner() const
+		Multition&			owner() const
 		{
 			return *m_owner;
 		}
 
 	protected: // functions
-		static inline void	synchronize(	Multition&			multition)
+		static void			synchronize(	Multition&			multition)
 		{
 			sm_instance = static_cast<Singleton<T>*>(multition.get<T>());
 		}

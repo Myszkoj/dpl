@@ -25,32 +25,32 @@ namespace dpl
 		Interface of the Link class.
 	*/
 	template<typename T, uint32_t ID>
-	class Previous : private Association<Previous<T, ID>, Next<T, ID>, ID>
+	class	Previous : private Association<Previous<T, ID>, Next<T, ID>, ID>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MyBase = Association<Previous<T, ID>, Next<T, ID>, ID>;
 
-	public: // friends
+	public:		// [FRIENDS]
 		friend	MyBase;
 		friend	Association<Next<T, ID>, Previous<T, ID>, ID>;
 		friend	Link<T, ID>;
 
-	private: // lifecycle
+	private:	// [LIFECYCLE]
 		using	MyBase::MyBase;
 		using	MyBase::operator=;
 
-		inline Previous&			operator=(Swap<Previous> other)
+		Previous&				operator=(Swap<Previous> other)
 		{
 			return static_cast<Previous&>(MyBase::operator=(Swap(other)));
 		}
 
-	protected: // functions
-		inline Link<T, ID>*			get_raw_prev()
+	protected:	// [FUNCTIONS]
+		Link<T, ID>*			get_raw_prev()
 		{
 			return static_cast<Link<T, ID>*>(MyBase::other());
 		}
 
-		inline const Link<T, ID>*	get_raw_prev() const
+		const Link<T, ID>*		get_raw_prev() const
 		{
 			return static_cast<const Link<T, ID>*>(MyBase::other());
 		}
@@ -61,32 +61,32 @@ namespace dpl
 		Interface of the Link class.
 	*/
 	template<typename T, uint32_t ID>
-	class Next : private Association<Next<T, ID>, Previous<T, ID>, ID>
+	class	Next : private Association<Next<T, ID>, Previous<T, ID>, ID>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MyBase = Association<Next<T, ID>, Previous<T, ID>, ID>;
 
-	public: // friends
+	public:		// [FRIENDS]
 		friend	MyBase;
 		friend	Association<Previous<T, ID>, Next<T, ID>, ID>;
 		friend	Link<T, ID>;
 
-	private: // lifecycle
+	private:	// [LIFECYCLE]
 		using	MyBase::MyBase;
 		using	MyBase::operator=;
 
-		inline Next&				operator=(Swap<Next> other)
+		Next&				operator=(Swap<Next> other)
 		{
 			return static_cast<Next&>(MyBase::operator=(Swap(other)));
 		}
 
-	protected: // functions
-		inline Link<T, ID>*			get_raw_next()
+	protected:	// [FUNCTIONS]
+		Link<T, ID>*		get_raw_next()
 		{
 			return static_cast<Link<T, ID>*>(MyBase::other());
 		}
 
-		inline const Link<T, ID>*	get_raw_next() const
+		const Link<T, ID>*	get_raw_next() const
 		{
 			return static_cast<const Link<T, ID>*>(MyBase::other());
 		}
@@ -97,20 +97,20 @@ namespace dpl
 		Linked list node.
 	*/
 	template<typename T, uint32_t ID>
-	class Link	: public Previous<T, ID>
-				, public Next<T, ID>
+	class	Link	: public Previous<T, ID>
+					, public Next<T, ID>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MyPrev				= Previous<T, ID>;
 		using	MyNext				= Next<T, ID>;
 
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using	Invoke				= std::function<void(T&)>;
 		using	InvokeConst			= std::function<void(const T&)>;
 		using	InvokeUntil			= std::function<bool(T&)>;
 		using	InvokeConstUntil	= std::function<bool(const T&)>;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR			Link() = default;
 
 		CLASS_CTOR			Link(						const Link&				OTHER) = delete;
@@ -149,48 +149,48 @@ namespace dpl
 			return operator=(Swap<Link>(*other));
 		}
 
-	public: // functions
-		inline T*			cast()
+	public:		// [FUNCTIONS]
+		T*					cast()
 		{
 			return static_cast<T*>(this);
 		}
 
-		inline const T*		cast() const
+		const T*			cast() const
 		{
 			return static_cast<const T*>(this);
 		}
 
-		inline bool			is_linked_to_previous() const
+		bool				is_linked_to_previous() const
 		{
 			return MyPrev::get_raw_prev() != nullptr;
 		}
 
-		inline bool			is_linked_to_next() const
+		bool				is_linked_to_next() const
 		{
 			return MyNext::get_raw_next() != nullptr;
 		}
 
-		inline bool			is_linked_to_any() const
+		bool				is_linked_to_any() const
 		{
 			return is_linked_to_previous() || is_linked_to_next();
 		}
 
-		inline T*			previous()
+		T*					previous()
 		{
 			return is_linked_to_previous() ? MyPrev::get_raw_prev()->cast() : nullptr;
 		}
 
-		inline const T*		previous() const
+		const T*			previous() const
 		{
 			return is_linked_to_previous() ? MyPrev::get_raw_prev()->cast() : nullptr;
 		}
 
-		inline T*			next()
+		T*					next()
 		{
 			return is_linked_to_next() ? MyNext::get_raw_next()->cast() : nullptr;
 		}
 
-		inline const T*		next() const
+		const T*			next() const
 		{
 			return is_linked_to_next() ? MyNext::get_raw_next()->cast() : nullptr;
 		}
@@ -251,12 +251,12 @@ namespace dpl
 			return count;
 		}
 
-		inline uint32_t		for_each_other(				const Invoke&			INVOKE)
+		uint32_t			for_each_other(				const Invoke&			INVOKE)
 		{
 			return Link::iterate_forward(INVOKE) + Link::iterate_backwards(INVOKE);
 		}
 
-		inline uint32_t		for_each(					const Invoke&			INVOKE)
+		uint32_t			for_each(					const Invoke&			INVOKE)
 		{
 			INVOKE(*cast());
 			return 1 + Link::iterate_forward(INVOKE) + Link::iterate_backwards(INVOKE);
@@ -318,18 +318,18 @@ namespace dpl
 			return count;
 		}
 
-		inline uint32_t		for_each_other(				const InvokeConst&		INVOKE) const
+		uint32_t			for_each_other(				const InvokeConst&		INVOKE) const
 		{
 			return Link::iterate_forward(INVOKE) + Link::iterate_backwards(INVOKE);
 		}
 
-		inline uint32_t		for_each(					const InvokeConst&		INVOKE) const
+		uint32_t			for_each(					const InvokeConst&		INVOKE) const
 		{
 			INVOKE(*cast());
 			return 1 + Link::iterate_forward(INVOKE) + Link::iterate_backwards(INVOKE);
 		}
 
-	protected: // functions
+	protected:	// [FUNCTIONS]
 		void				attach_front(				Link&					other)
 		{
 			throw_if_same(other);
@@ -371,8 +371,8 @@ namespace dpl
 			}
 		}
 
-	private: // debug exceptions
-		inline void			throw_if_same(				const Link&				OTHER) const
+	private:	// [DEBUG]
+		void				throw_if_same(				const Link&				OTHER) const
 		{
 #ifdef _DEBUG
 			if (this != &OTHER) return;

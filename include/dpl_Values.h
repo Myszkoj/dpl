@@ -198,27 +198,33 @@ namespace dpl
 		}
 
 	public: // operators
-		inline operator			const T() const
+		operator				const T() const
 		{
 			return value;
 		}
 
-		inline bool				operator==(			const T				OTHER) const
+		RangedValue&			operator=(			const T				NEW_VALUE)
+		{
+			set(NEW_VALUE);
+			return *this;
+		}
+
+		bool					operator==(			const T				OTHER) const
 		{
 			return value == OTHER;
 		}
 
-		inline bool				operator!=(			const T				OTHER) const
+		bool					operator!=(			const T				OTHER) const
 		{
 			return value != OTHER;
 		}
 
-		inline bool				operator==(			const RangedValue&	OTHER) const
+		bool					operator==(			const RangedValue&	OTHER) const
 		{
 			return value == OTHER;
 		}
 
-		inline bool				operator!=(			const RangedValue&	OTHER) const
+		bool					operator!=(			const RangedValue&	OTHER) const
 		{
 			return value != OTHER;
 		}
@@ -239,17 +245,17 @@ namespace dpl
 		}
 
 	public: // functions
-		inline void				swap(				RangedValue&		other) noexcept
+		void					swap(				RangedValue&		other) noexcept
 		{
 			std::swap(value, other.value);
 		}
 
-		inline void				set(				const T				NEW_VALUE)
+		void					set(				const T				NEW_VALUE)
 		{
 			value = RangedValue::clamp(NEW_VALUE);
 		}
 
-		inline void				set_default()
+		void					set_default()
 		{
 			set(DEFAULT);
 		}
@@ -262,29 +268,29 @@ namespace dpl
 			return true;
 		}
 
-		inline const T			get() const
+		const T					get() const
 		{
 			return value;
 		}
 
-		inline void				minimize()
+		void					minimize()
 		{
 			value = RANGE.min();
 		}
 
-		inline void				maximize()
+		void					maximize()
 		{
 			value = RANGE.max();
 		}
 
 	private: // functions
-		inline void				clamp()
+		void					clamp()
 		{
 			if(value < RANGE.min()) value = RANGE.min();
 			if(value > RANGE.max()) value = RANGE.max();
 		}
 
-		static inline T			clamp(				const T				VALUE)
+		static T				clamp(				const T				VALUE)
 		{
 			if(VALUE < RANGE.min()) return RANGE.min();
 			if(VALUE > RANGE.max()) return RANGE.max();

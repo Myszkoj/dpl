@@ -2,7 +2,26 @@
 
 
 #include <iostream>
+#include "dpl_TypeTraits.h"
 
+
+// concepts
+namespace dpl
+{
+	template<typename ContainerT>
+	concept has_value_type		=  dpl::is_type_complete_v<typename ContainerT::value_type>;
+
+	template<typename ContainerT>
+	concept has_size_type		=  dpl::is_type_complete_v<typename ContainerT::size_type>;
+
+	template<typename IteratorT>
+	concept has_random_access	=  std::is_same_v<typename IteratorT::iterator_category, std::random_access_iterator_tag>;
+
+	template<typename ContainerT>
+	concept is_container		=  has_value_type<ContainerT> 
+								&& has_size_type<ContainerT> 
+								&& has_random_access<typename ContainerT::iterator>;
+}
 
 namespace dpl
 {

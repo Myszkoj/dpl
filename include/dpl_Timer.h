@@ -13,7 +13,7 @@ namespace dpl
 {
 	class Timer
 	{
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using TimePoint		= std::chrono::time_point<std::chrono::system_clock>;
 		using Nanoseconds	= std::chrono::duration<double, std::nano>;
 		using Microseconds	= std::chrono::duration<double, std::micro>;
@@ -38,15 +38,20 @@ namespace dpl
 			PAUSED
 		};
 
-	public: // lifecycle
-		/*CTOR */					Timer()
+	private:	// [DATA]
+		Seconds			m_clock;
+		TimePoint		m_startPoint;
+		Mask32<Flags>	m_state;
+
+	public:		// [LIFECYCLE]
+		CLASS_CTOR					Timer()
 			: m_clock(0.0)
 		{
 
 		}
 
-	public: // functions
-		static inline TimePoint		now()
+	public:		// [FUNCTIONS]
+		static TimePoint			now()
 		{
 			return std::chrono::system_clock::now();
 		}
@@ -60,21 +65,21 @@ namespace dpl
 			return std::string(str);
 		}
 
-		inline void					start()
+		void						start()
 		{
 			stop();
 			m_state.set_at(STARTED, true);
 			m_startPoint = now();
 		}
 
-		inline void					stop()
+		void						stop()
 		{
 			m_state.set_at(STARTED, false);
 			m_state.set_at(PAUSED,	false);
 			m_clock = Seconds();
 		}
 
-		inline void					pause()
+		void						pause()
 		{
 			if (!is_started()) return;
 			if (is_paused()) return;
@@ -82,44 +87,39 @@ namespace dpl
 			m_clock	+= Seconds(now() - m_startPoint);
 		}
 
-		inline void					unpause()
+		void						unpause()
 		{
 			if(!is_paused()) return;
 			m_state.set_at(PAUSED, false);
 			m_startPoint = now();
 		}
 
-		inline Seconds				seconds() const
+		Seconds						seconds() const
 		{
 			return (is_started() && !is_paused()) ? m_clock + Seconds(now() - m_startPoint) : m_clock;
 		}
 
 		template<typename DurationT>
-		inline DurationT			duration() const
+		DurationT					duration() const
 		{
 			return std::chrono::duration_cast<DurationT>(seconds());
 		}
 
 		template<typename DurationT>
-		inline std::string			duration_str() const
+		std::string					duration_str() const
 		{
 			return std::to_string(duration<DurationT>().count()) + Suffix<DurationT>::get();
 		}
 
-		inline bool					is_started() const
+		bool						is_started() const
 		{
 			return m_state.at(STARTED);
 		}
 
-		inline bool					is_paused() const
+		bool						is_paused() const
 		{
 			return m_state.at(PAUSED);
 		}
-
-	private:
-		Seconds			m_clock;
-		TimePoint		m_startPoint;
-		Mask32<Flags>	m_state;
 	};
 }
 

@@ -147,7 +147,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\dpl_ECI.h" />
+    <ClInclude Include="include\dpl_Application.h" />
+    <ClInclude Include="include\dpl_EntityManager.h" />
     <ClInclude Include="include\dpl_Archive.h" />
     <ClInclude Include="include\dpl_Binary.h" />
     <ClInclude Include="include\dpl_Buffer.h" />
@@ -168,10 +169,12 @@
     <ClInclude Include="include\dpl_ResourceControl.h" />
     <ClInclude Include="include\dpl_Result.h" />
     <ClInclude Include="include\dpl_Stream.h" />
-    <ClInclude Include="include\dpl_StateMachine.h" />
+    <ClInclude Include="include\dpl_StateManager.h" />
     <ClInclude Include="include\dpl_StaticHolder.h" />
     <ClInclude Include="include\dpl_std_addons.h" />
+    <ClInclude Include="include\dpl_SystemManager.h" />
     <ClInclude Include="include\dpl_ThreadPool.h" />
+    <ClInclude Include="include\dpl_TimeManager.h" />
     <ClInclude Include="include\dpl_Timer.h" />
     <ClInclude Include="include\dpl_TypeLock.h" />
     <ClInclude Include="include\dpl_TypeTraits.h" />

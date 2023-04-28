@@ -19,11 +19,14 @@
     <Filter Include="patterns - relations">
       <UniqueIdentifier>{88c23bd0-41fd-4a6f-ae85-9a0643c94f73}</UniqueIdentifier>
     </Filter>
-    <Filter Include="patterns - complex">
-      <UniqueIdentifier>{f0b4a113-c3ae-4c32-bf70-a4b6b1190a97}</UniqueIdentifier>
-    </Filter>
     <Filter Include="experiments">
       <UniqueIdentifier>{f3a3d99f-b90e-466b-8985-28a847ce238e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="patterns - Application">
+      <UniqueIdentifier>{f0b4a113-c3ae-4c32-bf70-a4b6b1190a97}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="patterns - Application\Managers">
+      <UniqueIdentifier>{e32c23a0-b862-450a-9e73-e80d212d4827}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -111,9 +114,6 @@
     <ClInclude Include="include\dpl_EventDispatcher.h">
       <Filter>patterns - basic</Filter>
     </ClInclude>
-    <ClInclude Include="include\dpl_StateMachine.h">
-      <Filter>patterns - basic</Filter>
-    </ClInclude>
     <ClInclude Include="include\dpl_ResourceControl.h">
       <Filter>patterns - other</Filter>
     </ClInclude>
@@ -153,11 +153,23 @@
     <ClInclude Include="include\dpl_Link.h">
       <Filter>patterns - relations</Filter>
     </ClInclude>
-    <ClInclude Include="include\dpl_ECI.h">
-      <Filter>patterns - complex</Filter>
-    </ClInclude>
     <ClInclude Include="include\experiments\dpl_FakeOverloadingHack.h">
       <Filter>experiments</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_Application.h">
+      <Filter>patterns - Application</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_TimeManager.h">
+      <Filter>patterns - Application\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_EntityManager.h">
+      <Filter>patterns - Application\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_StateManager.h">
+      <Filter>patterns - Application\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_SystemManager.h">
+      <Filter>patterns - Application\Managers</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
