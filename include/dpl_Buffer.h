@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdexcept>
 #include <functional>
+#include <memory>
 #include "dpl_ReadOnly.h"
 #include "dpl_GeneralException.h"
 
@@ -30,7 +31,7 @@ namespace dpl
 		std::unique_ptr<NewPosition_t[]>	indices;
 
 	public: // lifecycle
-		CLASS_CTOR					DeltaArray(	const uint32_t			NUM_INDICES)
+		CLASS_CTOR				DeltaArray(	const uint32_t			NUM_INDICES)
 			: size(NUM_INDICES)
 			, indices(std::make_unique<OldPosition_t[]>(NUM_INDICES))
 		{
@@ -38,7 +39,7 @@ namespace dpl
 		}
 
 	public: // functions
-		inline void					for_each(	const Callback&			CALL_AT)
+		void					for_each(	const Callback&			CALL_AT)
 		{
 			for(NewPosition_t oldPosition = 0; oldPosition < size(); ++oldPosition)
 			{
@@ -46,7 +47,7 @@ namespace dpl
 			}
 		}
 
-		inline void					for_each(	const ConstCallback&	CALL_AT) const
+		void					for_each(	const ConstCallback&	CALL_AT) const
 		{
 			for(NewPosition_t oldPosition = 0; oldPosition < size(); ++oldPosition)
 			{
@@ -55,12 +56,12 @@ namespace dpl
 		}
 
 	public: // operators
-		inline NewPosition_t&		operator[](	const OldPosition_t		INDEX)
+		NewPosition_t&			operator[](	const OldPosition_t		INDEX)
 		{
 			return indices[INDEX];
 		}
 
-		inline const NewPosition_t&	operator[](	const OldPosition_t		INDEX) const
+		const NewPosition_t&	operator[](	const OldPosition_t		INDEX) const
 		{
 			return indices[INDEX];
 		}
@@ -122,12 +123,12 @@ namespace dpl
 			return *this;
 		}
 
-		inline T&			operator[](			const uint32_t		INDEX)
+		T&					operator[](			const uint32_t		INDEX)
 		{
 			return m_data[INDEX];
 		}
 
-		inline const T&		operator[](			const uint32_t		INDEX) const
+		const T&			operator[](			const uint32_t		INDEX) const
 		{
 			return m_data[INDEX];
 		}
@@ -136,44 +137,44 @@ namespace dpl
 		/*
 			Returns capacity of the buffer in bytes.
 		*/
-		inline uint32_t		bytes() const
+		uint32_t			bytes() const
 		{
 			return static_cast<uint32_t>(sizeof(T) * capacity());
 		}
 
-		inline uint32_t		capacity() const
+		uint32_t			capacity() const
 		{
 			return m_capacity;
 		}
 
-		inline T*			data()
+		T*					data()
 		{
 			return m_data;
 		}
 
-		inline const T*		data() const
+		const T*			data() const
 		{
 			return m_data;
 		}
 
-		inline T&			at(								const uint32_t		INDEX)
+		T&					at(								const uint32_t		INDEX)
 		{
 			throw_if_invalid_index(INDEX);
 			return data()[INDEX];
 		}
 
-		inline const T&		at(								const uint32_t		INDEX) const
+		const T&			at(								const uint32_t		INDEX) const
 		{
 			throw_if_invalid_index(INDEX);
 			return data()[INDEX];
 		}
 
-		inline bool			index_in_range(					const uint32_t		INDEX) const
+		bool				index_in_range(					const uint32_t		INDEX) const
 		{
 			return INDEX < m_capacity;
 		}
 
-		inline bool			index_in_range(					const uint64_t		INDEX) const
+		bool				index_in_range(					const uint64_t		INDEX) const
 		{
 			return INDEX < m_capacity;
 		}
@@ -181,26 +182,26 @@ namespace dpl
 		/*
 			Returns INVALID_INDEX if out of range.
 		*/
-		inline uint32_t		index_of(						const T*			ADDRESS) const
+		uint32_t			index_of(						const T*			ADDRESS) const
 		{
 			if (ADDRESS < data()) return INVALID_INDEX;
 			const uint64_t INDEX = ADDRESS - data();
 			return index_in_range(INDEX)? (uint32_t)INDEX : INVALID_INDEX;
 		}
 
-		inline bool			contains_address(				const T*			ADDRESS) const
+		bool				contains_address(				const T*			ADDRESS) const
 		{
 			if (ADDRESS < data()) return false;
 			return index_in_range(ADDRESS - data());
 		}
 
-		inline bool			can_fit(						const uint32_t		NUM_ELEMENTS) const
+		bool				can_fit(						const uint32_t		NUM_ELEMENTS) const
 		{
 			return NUM_ELEMENTS <= m_capacity;
 		}
 
 		template<typename... Args>
-		inline T&			construct_at(					const uint32_t		INDEX, 
+		T&					construct_at(					const uint32_t		INDEX, 
 															Args&&...			args)
 		{
 			auto& obj = at(INDEX);
@@ -208,7 +209,7 @@ namespace dpl
 			return obj;
 		}
 
-		inline void			fill()
+		void				fill()
 		{
 			for(uint32_t index = 0; index < capacity(); ++index)
 			{
@@ -216,7 +217,7 @@ namespace dpl
 			}
 		}
 
-		inline void			fill(							const T&			DEFAULT)
+		void				fill(							const T&			DEFAULT)
 		{
 			for(uint32_t index = 0; index < capacity(); ++index)
 			{
@@ -224,7 +225,7 @@ namespace dpl
 			}
 		}
 
-		inline void			destroy_at(						const uint32_t		INDEX)
+		void				destroy_at(						const uint32_t		INDEX)
 		{
 			if constexpr (!std::is_trivially_destructible_v<T>)
 			{
@@ -232,7 +233,7 @@ namespace dpl
 			}
 		}
 
-		inline void			destroy_range(					const uint32_t		OFFSET,
+		void				destroy_range(					const uint32_t		OFFSET,
 															const uint32_t		COUNT)
 		{
 			if constexpr (!std::is_trivially_destructible_v<T>)
@@ -246,13 +247,13 @@ namespace dpl
 			}
 		}
 
-		inline void			swap(							Buffer&				other)
+		void				swap(							Buffer&				other)
 		{
 			std::swap(m_data,		other.m_data);
 			std::swap(m_capacity,	other.m_capacity);
 		}
 
-		inline void			relocate(						const uint32_t		NEW_CAPACITY,
+		void				relocate(						const uint32_t		NEW_CAPACITY,
 															const OnRelocate&	ON_RELOCATE)
 		{
 			Buffer<T> newBuffer(NEW_CAPACITY);
@@ -317,7 +318,7 @@ namespace dpl
 		}
 
 	private: // functions
-		inline void			allocate()
+		void				allocate()
 		{
 			if(capacity() > 0)
 			{
@@ -329,7 +330,7 @@ namespace dpl
 			}
 		}
 
-		inline void			release_data()
+		void				release_data()
 		{
 			if(m_data != nullptr)
 			{
@@ -338,14 +339,14 @@ namespace dpl
 			}
 		}
 
-		inline void			invalidate()
+		void				invalidate()
 		{
 			m_data		= nullptr;
 			m_capacity	= 0;
 		}
 
 	private: // debug exceptions
-		inline void			throw_if_invalid_index(			const uint32_t		INDEX) const
+		void				throw_if_invalid_index(			const uint32_t		INDEX) const
 		{
 #ifdef _DEBUG
 			if(index_in_range(INDEX)) return;
@@ -353,7 +354,7 @@ namespace dpl
 #endif
 		}
 
-		inline void			throw_if_invalid_range(			const uint32_t		OFFSET,
+		void				throw_if_invalid_range(			const uint32_t		OFFSET,
 															const uint32_t		COUNT) const
 		{
 #ifdef _DEBUG
@@ -362,7 +363,7 @@ namespace dpl
 #endif
 		}
 
-		inline void			throw_if_invalid_source_delta(	const Buffer&		SOURCE,
+		void				throw_if_invalid_source_delta(	const Buffer&		SOURCE,
 															const DeltaArray&	DELTA) const
 		{
 #ifdef _DEBUG

@@ -330,6 +330,8 @@ namespace dpl
 		}
 
 	protected:	// [FUNCTIONS]
+
+		// Attach this befor the other.
 		void				attach_front(				Link&					other)
 		{
 			throw_if_same(other);
@@ -339,6 +341,7 @@ namespace dpl
 			if (prev) MyPrev::link(*prev);
 		}
 
+		// Attach this after the other.
 		void				attach_back(				Link&					other)
 		{
 			throw_if_same(other);
@@ -360,13 +363,19 @@ namespace dpl
 
 		void				detach()
 		{
-			if(MyPrev::get_raw_prev() != MyNext::get_raw_next())
+			if(MyPrev::get_raw_prev())
 			{
-				MyPrev::other()->link(*MyNext::other());
+				if(MyNext::get_raw_next())
+				{
+					MyPrev::other()->link(*MyNext::other());
+				}
+				else
+				{
+					MyPrev::unlink();
+				}
 			}
-			else // This was the last object in sequence, we have to break the loop.
+			else if(MyNext::get_raw_next())
 			{
-				MyPrev::unlink();
 				MyNext::unlink();
 			}
 		}

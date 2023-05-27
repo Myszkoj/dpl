@@ -17,6 +17,8 @@
 #include "dpl_Variation.h"
 #include "dpl_ThreadPool.h"
 
+#pragma warning( push )
+#pragma warning( disable : 26495 )
 
 // declarations
 namespace dpl
@@ -28,8 +30,11 @@ namespace dpl
 	template<typename SystemT>
 	class	ParentSystem;
 
-	template<typename SystemT, typename ParentSystemT>
+	template<typename ParentSystemT>
 	class	ChildSystem;
+
+	template<typename SystemT, typename ParentSystemT>
+	class	Subsystem;
 	
 	template<typename SystemT>
 	class	PhaseSystem;
@@ -39,8 +44,7 @@ namespace dpl
 
 
 	static const uint32_t INSTALLATION_ORDER_HASH	= 999777111;
-	static const uint32_t PHASE_ORDER_HASH			= 888777111;
-	static const uint32_t PARALLEL_ORDER_HASH		= 777777111;
+	static const uint32_t SYSTEM_CATEGORY_HASH		= 888777111;
 }
 
 // concepts
@@ -81,31 +85,28 @@ namespace dpl
 	class	PhaseUser
 	{
 	public:		// [FRIENDS]
-		template<typename, typename>
+		template<typename>
 		friend class ChildSystem;
 
 		template<typename>
 		friend class PhaseSystem;
 
 	private:	// [LIFECYCLE]
-		CLASS_CTOR PhaseUser() = default;
+		CLASS_CTOR					PhaseUser() = default;
 
 	protected:	// [FUNCTIONS]
-		dpl::ParallelPhase&	phase()
-		{
-			return SystemManager::ref().m_phase;
-		}
+		inline dpl::ParallelPhase&	phase();
 	};
 
 
 	template<typename SystemT>
 	struct	PhaseQuery
 	{
-	private:	using Base	= typename BaseSystemQuery<SystemT, is_ChildSystem<SystemT>>::PARENT_SYSTEM;
+	private:	using Base	=	typename BaseSystemQuery<SystemT, is_ChildSystem<SystemT>>::PARENT_SYSTEM;
 	public:		using PHASE	=	std::conditional_t<	is_PhaseSystem<SystemT>, // ?
 																			PhaseUser, 
 								std::conditional_t<	is_ChildSystem<SystemT>, // ?
-																			PhaseQuery<Base>::PHASE, 
+																			typename PhaseQuery<Base>::PHASE, 
 																			std::monostate>>;
 	};
 
@@ -207,7 +208,7 @@ namespace dpl
 			m_map.clear();
 		}
 
-		bool			export_to_binary(	const std::string&	SETTINGS_FILE) const
+		bool			save_to_binary(		const std::string&	SETTINGS_FILE) const
 		{
 			std::ofstream file(SETTINGS_FILE, std::ios::binary | std::ios::trunc);
 			if(file.fail() || file.bad())
@@ -217,14 +218,14 @@ namespace dpl
 			dpl::export_t(file, (uint64_t)m_map.size());
 			for(const auto& IT : m_map)
 			{
-				dpl::export_container(file, IT.first);
+				dpl::export_t(file, IT.first);
 				dpl::export_t(file, IT.second->get_typeID());
 				IT.second->export_to_binary(file);
 			}
 			return true;
 		}
 
-		bool			import_from_binary(	const std::string&	SETTINGS_FILE)
+		bool			load_from_binary(	const std::string&	SETTINGS_FILE)
 		{
 			std::ifstream file(SETTINGS_FILE, std::ios::binary);
 			if(file.fail() || file.bad())
@@ -233,9 +234,14 @@ namespace dpl
 			std::string tag;
 			uint32_t	typeID = -1;
 
+			// Returns true if importer encountered unknown type.
 			auto import_data = [&]<typename T>(T* dummy)
 			{
-				if(typeID != KnownTypes::index_of<T>()) return true; // UNKNWON_TYPE
+				if (typeID != KnownTypes::index_of<T>())
+				{
+					dpl::Logger::ref().push_error("Unknown setting: Type[%s] Tag[%s]", dpl::undecorate_type_name<T>().c_str(), tag.c_str());
+					return true; // UNKNWON_TYPE
+				}
 
 				auto result = m_map.emplace(tag, std::make_unique<DataWrapper_of<T>>());
 
@@ -253,14 +259,14 @@ namespace dpl
 			bool success = true;
 			for(uint64_t index = 0; index < NUM_SETTINGS; ++index)
 			{
-				dpl::import_dynamic_container(file, tag);
+				dpl::import_t(file, tag);
 				dpl::import_t(file, typeID);
 				std::invoke([&]<typename... Ts>(const std::tuple<Ts...>* DUMMY)
 				{			
 					const bool UNKNOWN_TYPE = (... && import_data((Ts*)(0)));
 					if(UNKNOWN_TYPE)
 					{
-						success = dpl::Logger::ref().push_error("Unknwon setting: Type[%s] Tag[%s]", dpl::undecorate_type_name<Ts>().c_str(), tag.c_str());
+						success = false;
 					}
 						
 				}, type_iterator);
@@ -273,9 +279,11 @@ namespace dpl
 
 	class	System	: public dpl::Variant<SystemManager, System>
 					, private dpl::Sequenceable<System, INSTALLATION_ORDER_HASH>
+					, private dpl::Sequenceable<System, SYSTEM_CATEGORY_HASH>
 	{
 	private:	// [SUBTYPES]
 		using	MyInstallationOrder = dpl::Sequenceable<System, INSTALLATION_ORDER_HASH>;
+		using	MyCategory			= dpl::Sequenceable<System, SYSTEM_CATEGORY_HASH>;
 
 	public:		// [SUBTYPES]
 		using	Action	=  std::function<void()>;
@@ -284,9 +292,14 @@ namespace dpl
 		friend	SystemManager;
 		friend	MyInstallationOrder;
 		friend	MyInstallationOrder::MyBase;
+		friend	MyCategory;
+		friend	MyCategory::MyBase;
 
 		template<typename>
 		friend class ParentSystem;
+
+		template<typename>
+		friend class ChildSystem;
 
 	public:		// [DATA]
 		dpl::ReadOnly<std::string,	System> name;
@@ -385,69 +398,73 @@ namespace dpl
 			reset_diagnostic();
 		}
 	};
+
+
+	class	SystemCategory : public dpl::Sequence<System, SYSTEM_CATEGORY_HASH>
+	{
+	public:		// [FRIENDS]
+		friend SystemManager;
+	};
 }
 
-// implementation
+// parent-child base
 namespace dpl
 {
 	template<typename SystemT>
 	class	ParentSystem	: public System
 							, public dpl::Singleton<SystemT>
-							, private dpl::Group<SystemT, System>
+							, private dpl::Group<SystemT, ChildSystem<SystemT>>
 	{
 	private:	// [SUBTYPES]
 		using	MySingletonBase = dpl::Singleton<SystemT>;
-		using	MySubsystems	= dpl::Group<SystemT, System>;
+		using	MySubsystems	= dpl::Group<SystemT, ChildSystem<SystemT>>;
 
 	public:		// [FRIENDS]
 		friend	MySubsystems;
 		friend	MySubsystems::MyBase;
 		friend	System;
 		friend	SystemManager;
+		friend	ChildSystem<SystemT>;
 
-		template<typename, typename>
-		friend class ChildSystem;
-
-		template<typename, typename>
+		template<typename>
 		friend class PhaseSystem;
 
-		template<typename, typename>
+		template<typename>
 		friend class ParallelSystem;
 
 	public:		// [SUBTYPES]
 		using	Binding = System::Binding;
 
 	private:	// [LIFECYCLE]
-		CLASS_CTOR			ParentSystem(			const Binding&						BINDING)
+		CLASS_CTOR			ParentSystem(			const Binding&				BINDING)
 			: System(BINDING, dpl::undecorate_type_name<SystemT>())
 			, MySingletonBase(SystemManager::ref().owner())
 		{
 
 		}
 
-		CLASS_CTOR			ParentSystem(			const ParentSystem&					OTHER)			= delete;
-		CLASS_CTOR			ParentSystem(			ParentSystem&&						other) noexcept = default;
-		ParentSystem&		operator=(				const ParentSystem&					OTHER)			= delete;
-		ParentSystem&		operator=(				ParentSystem&&						other) noexcept = default;
+		CLASS_CTOR			ParentSystem(			const ParentSystem&			OTHER)			= delete;
+		CLASS_CTOR			ParentSystem(			ParentSystem&&				other) noexcept = default;
+		ParentSystem&		operator=(				const ParentSystem&			OTHER)			= delete;
+		ParentSystem&		operator=(				ParentSystem&&				other) noexcept = default;
 
 	private:	// [FUNCTIONS]
-		template<typename SubsystemT>
-		void				add_system(				ChildSystem<SubsystemT, SystemT>&	subsystem)
+		void				add_system(				ChildSystem<SystemT>&		subsystem)
 		{
 			MySubsystems::add_end_member(subsystem);
 		}
 
 	private:	// [INTERFACE]
-		virtual void		on_subsystems_saved(	Settings&							settings) const{}
+		virtual void		on_subsystems_saved(	Settings&					settings) const{}
 
-		virtual void		on_subsystems_loaded(	const Settings&						SETTINGS){}
+		virtual void		on_subsystems_loaded(	const Settings&				SETTINGS){}
 
 		virtual void		on_start_update(){}
 
 		virtual void		on_subsystems_updated(){}
 
 	private:	// [IMPLEMENTATION]
-		virtual void		on_save(				Settings&							settings) const final override
+		virtual void		on_save(				Settings&					settings) const final override
 		{
 			MySubsystems::for_each_member([&](const System& SUBSYSTEM)
 			{
@@ -456,7 +473,7 @@ namespace dpl
 			on_subsystems_saved(settings);
 		}
 
-		virtual void		on_load(				const Settings&						SETTINGS) final override
+		virtual void		on_load(				const Settings&				SETTINGS) final override
 		{
 			MySubsystems::for_each_member([&](System& subsystem)
 			{
@@ -477,60 +494,118 @@ namespace dpl
 	};
 
 
-	template<typename SystemT, typename ParentSystemT>
-	class	ChildSystem		: public ParentSystem<SystemT>
+	template<typename ParentSystemT>
+	class	ChildSystem		: public System
 							, public MaybePhaseUser<ParentSystemT>
-							, private dpl::Member<ParentSystemT, System>
+							, private dpl::Member<ParentSystemT, ChildSystem<ParentSystemT>>
 	{
 	private:	// [SUBTYPES]
-		using	MyMembership	= dpl::Member<ParentSystemT, System>;
+		using	MyGroup			= dpl::Group<ParentSystemT, ChildSystem<ParentSystemT>>;
+		using	MyMembership	= dpl::Member<ParentSystemT, ChildSystem<ParentSystemT>>;
 
-	public:	// [SUBTYPES]
+	public:		// [SUBTYPES]
 		using	PARENT_SYSTEM	= ParentSystemT;
+		using	Binding			= System::Binding;
 
 	public:		// [FRIENDS]
 		friend  SystemManager;
+		friend	MyGroup;
 		friend	MyMembership;
 		friend	MyMembership::MyBase;
 		friend	MyMembership::MyLink;
 		friend	ParentSystem<PARENT_SYSTEM>;
+
+		template<typename, typename>
+		friend class Subsystem;
+
+	private:	// [LIFECYCLE]
+		CLASS_CTOR			ChildSystem(		const Binding&			BINDING,
+												std::string				sysName)
+			: System(BINDING, sysName)
+		{
+
+		}
+
+		CLASS_CTOR			ChildSystem(		const ChildSystem&		OTHER)			= delete;
+		CLASS_CTOR			ChildSystem(		ChildSystem&&			other) noexcept = default;
+		ChildSystem&		operator=(			const ChildSystem&		OTHER)			= delete;
+		ChildSystem&		operator=(			ChildSystem&&			other) noexcept = default;
+	};
+}
+
+// system types
+namespace dpl
+{
+	template<typename SystemT, typename ParentSystemT>
+	class	Subsystem	: public ChildSystem<ParentSystemT>
+						, public dpl::Singleton<SystemT>
+	{
+	private:	// [SUBTYPES]
+		using	MySystemBase	= ChildSystem<ParentSystemT>;
+		using	MySingletonBase = dpl::Singleton<SystemT>;
+
+	public:		// [SUBSYSTEMS]
+		using	Binding			= System::Binding;
+
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR		Subsystem(		const Binding&			BINDING)
+			: MySystemBase(BINDING, dpl::undecorate_type_name<SystemT>())
+			, MySingletonBase(SystemManager::ref().owner())
+		{
+
+		}
+
+		CLASS_CTOR		Subsystem(		const Subsystem&		OTHER)			= delete;
+		CLASS_CTOR		Subsystem(		Subsystem&&				other) noexcept = default;
+		Subsystem&		operator=(		const Subsystem&		OTHER)			= delete;
+		Subsystem&		operator=(		Subsystem&&				other) noexcept = default;
 	};
 
 
 	template<typename SystemT>
 	class	PhaseSystem		: public ParentSystem<SystemT>
 							, public PhaseUser
-							, private dpl::Sequenceable<System, PHASE_ORDER_HASH>
 	{
 	private:	// [SUBTYPES]
 		using	MySystemBase	= ParentSystem<SystemT>;
-		using	MySequence		= dpl::Sequenceable<System, PHASE_ORDER_HASH>;
 
-	public:		// [FRIENDS]
-		friend	MySequence;
-		friend	MySequence::MyBase;
+	public:		// [SUBSYSTEMS]
+		using	Binding			= System::Binding;
 
 	protected:	// [LIFECYCLE]
-		using	MySystemBase::MySystemBase;
-		using	MySystemBase::operator=;
+		CLASS_CTOR			PhaseSystem(		const Binding&			BINDING)
+			: MySystemBase(BINDING)
+		{
+
+		}
+
+		CLASS_CTOR			PhaseSystem(		const PhaseSystem&		OTHER)			= delete;
+		CLASS_CTOR			PhaseSystem(		PhaseSystem&&			other) noexcept = default;
+		PhaseSystem&		operator=(			const PhaseSystem&		OTHER)			= delete;
+		PhaseSystem&		operator=(			PhaseSystem&&			other) noexcept = default;
 	};
 
 
 	template<typename SystemT>
 	class	ParallelSystem	: public ParentSystem<SystemT>
-							, private dpl::Sequenceable<System, PARALLEL_ORDER_HASH>
 	{
 	private:	// [SUBTYPES]
 		using	MySystemBase	= ParentSystem<SystemT>;
-		using	MySequence		= dpl::Sequenceable<System, PARALLEL_ORDER_HASH>;
 
-	public:		// [FRIENDS]
-		friend	MySequence;
-		friend	MySequence::MyBase;
+	public:		// [SUBSYSTEMS]
+		using	Binding			= System::Binding;
 
 	protected:	// [LIFECYCLE]
-		using	MySystemBase::MySystemBase;
-		using	MySystemBase::operator=;
+		CLASS_CTOR			ParallelSystem(		const Binding&			BINDING)
+			: MySystemBase(BINDING)
+		{
+
+		}
+
+		CLASS_CTOR			ParallelSystem(		const ParallelSystem&	OTHER)			= delete;
+		CLASS_CTOR			ParallelSystem(		ParallelSystem&&		other) noexcept = default;
+		ParallelSystem&		operator=(			const ParallelSystem&	OTHER)			= delete;
+		ParallelSystem&		operator=(			ParallelSystem&&		other) noexcept = default;
 	};
 }
 
@@ -561,25 +636,24 @@ namespace dpl
 	class	SystemManager	: public dpl::Singleton<SystemManager>
 							, public dpl::Variation<SystemManager, System>
 							, private dpl::Sequence<System, INSTALLATION_ORDER_HASH>
-							, private dpl::Sequence<System, PHASE_ORDER_HASH>
-							, private dpl::Sequence<System, PARALLEL_ORDER_HASH>
 	{
 	private:	// [SUBTYPES]
 		using	MySystemCallback	= std::function<void(System&)>;
 		using	InstallationOrder	= dpl::Sequence<System, INSTALLATION_ORDER_HASH>;
-		using	PhaseOrder			= dpl::Sequence<System, PHASE_ORDER_HASH>;
-		using	ParallelOrder		= dpl::Sequence<System, PARALLEL_ORDER_HASH>;
 
 	public:		// [SUBTYPES]
 		using	OnInstall			= std::function<void(SystemInstaller&)>;
 
 	public:		// [FRIENDS]
+		friend	SystemInstaller;
 		friend	InstallationOrder;
 		friend	PhaseUser;
 		
 	private:	// [DATA]
 		std::string				m_settingsFile;
 		dpl::Logger				m_logger;
+		SystemCategory			m_phaseSystems;
+		SystemCategory			m_parallelSystems;
 		dpl::ParallelPhase		m_phase; // All tasks must be done between system updates(call ThreadPool::wait when phase is done).
 		std::atomic_uint32_t	m_parallelWorkers;
 		std::atomic_bool		bParallelUpdate;
@@ -619,7 +693,7 @@ namespace dpl
 		void					update_all_systems()
 		{
 			parallel_update();
-			PhaseOrder::for_each([&](System& system)
+			m_phaseSystems.for_each([&](System& system)
 			{
 				system.update();
 				throw_if_phase_not_done();
@@ -642,26 +716,18 @@ namespace dpl
 		bool					save_settings() const
 		{
 			Settings settings;
-			PhaseOrder::for_each([&](const System& SYSTEM)
+			InstallationOrder::for_each([&](const System& SYSTEM)
 			{
 				SYSTEM.on_save(settings);
 			});
-			ParallelOrder::for_each([&](const System& SYSTEM)
-			{
-				SYSTEM.on_save(settings);
-			});
-			return settings.export_to_binary(m_settingsFile);
+			return settings.save_to_binary(m_settingsFile);
 		}
 
 		bool					load_settings()
 		{
 			Settings settings;
-			if(!settings.import_from_binary(m_settingsFile))	return false;
-			PhaseOrder::for_each([&](System& system)
-			{
-				system.on_load(settings);
-			});
-			ParallelOrder::for_each([&](System& system)
+			if(!settings.load_from_binary(m_settingsFile))	return false;
+			InstallationOrder::for_each([&](System& system)
 			{
 				system.on_load(settings);
 			});
@@ -678,11 +744,11 @@ namespace dpl
 			{
 				if constexpr (is_PhaseSystem<SystemT>)
 				{
-					PhaseOrder::add_back(*result.get());
+					m_phaseSystems.add_back(*result.get());
 				}
 				else if constexpr (is_ParallelSystem<SystemT>)
 				{
-					ParallelOrder::add_back(*result.get());
+					m_parallelSystems.add_back(*result.get());
 				}
 				else // child system
 				{
@@ -694,7 +760,7 @@ namespace dpl
 					else // handle error
 					{
 						// [TODO]: Log error
-						throw dpl::GeneralException(this, __LINE__, "Could not find given parent system: ", dpl::undecorate_type_name<ParentT>().c_str())
+						throw dpl::GeneralException(this, __LINE__, "Could not find given parent system: ", dpl::undecorate_type_name<ParentT>().c_str());
 						Variation::destroy_variant<SystemT>();
 						return;
 					}
@@ -745,7 +811,7 @@ namespace dpl
 				
 				bParallelUpdate = true;
 
-				ParallelOrder::for_each([&](System& system)
+				m_parallelSystems.for_each([&](System& system)
 				{
 					launch_parallel_system(system);
 				});
@@ -778,4 +844,12 @@ namespace dpl
 #endif // _DEBUG
 		}
 	};
+
+
+	dpl::ParallelPhase&	PhaseUser::phase()
+	{
+		return SystemManager::ref().m_phase;
+	}
 }
+
+#pragma warning( pop )

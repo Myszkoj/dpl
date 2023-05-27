@@ -2004,11 +2004,11 @@ namespace dpl
 
 
 	template<typename EntityT, is_ComponentTypeList COMPONENT_TYPES>
-	class	Composite;
+	class	MaybeComposite;
 
 
 	template<typename EntityT>
-	class	Composite<EntityT, dpl::TypeList<>> : public MaybeRelated<EntityT>
+	class	MaybeComposite<EntityT, dpl::TypeList<>> : public MaybeRelated<EntityT>
 	{
 	public: // subtypes
 		using	MyRelation	= MaybeRelated<EntityT>;
@@ -2017,15 +2017,15 @@ namespace dpl
 		using	MyRelation::MyRelation;
 
 	protected: // lifecycle
-		CLASS_CTOR		Composite(		const Composite&	OTHER) = delete;
-		CLASS_CTOR		Composite(		Composite&&			other) noexcept = default;
-		Composite&		operator=(		const Composite&	OTHER) = delete;
-		Composite&		operator=(		Composite&&			other) noexcept = default;
+		CLASS_CTOR		MaybeComposite(	const MaybeComposite&	OTHER) = delete;
+		CLASS_CTOR		MaybeComposite(	MaybeComposite&&		other) noexcept = default;
+		MaybeComposite&	operator=(		const MaybeComposite&	OTHER) = delete;
+		MaybeComposite&	operator=(		MaybeComposite&&		other) noexcept = default;
 	};
 
 
 	template<typename EntityT, is_Component... Ts>
-	class	Composite<EntityT, dpl::TypeList<Ts...>> : public MaybeRelated<EntityT>
+	class	MaybeComposite<EntityT, dpl::TypeList<Ts...>> : public MaybeRelated<EntityT>
 	{
 	public: // subtypes
 		using	MyRelation			= MaybeRelated<EntityT>;
@@ -2041,10 +2041,10 @@ namespace dpl
 		using	MyRelation::MyRelation;
 
 	protected: // lifecycle
-		CLASS_CTOR		Composite(						const Composite&		OTHER) = delete;
-		CLASS_CTOR		Composite(						Composite&&				other) noexcept = default;
-		Composite&		operator=(						const Composite&		OTHER) = delete;
-		Composite&		operator=(						Composite&&				other) noexcept = default;
+		CLASS_CTOR		MaybeComposite(					const MaybeComposite&	OTHER) = delete;
+		CLASS_CTOR		MaybeComposite(					MaybeComposite&&		other) noexcept = default;
+		MaybeComposite&	operator=(						const MaybeComposite&	OTHER) = delete;
+		MaybeComposite&	operator=(						MaybeComposite&&		other) noexcept = default;
 
 	public: // component access
 		template<dpl::is_one_of<COMPONENT_TYPES> T>
@@ -2158,7 +2158,7 @@ namespace dpl
 		- To meet the requirement, non-trivially destructible components must have operator>>(std::ostream&) and operator<<(std::istream&) implemented.
 	*/
 	template<typename EntityT>
-	class	Entity	: public Composite<EntityT, AllComponentTypes_of<EntityT>>
+	class	Entity	: public MaybeComposite<EntityT, AllComponentTypes_of<EntityT>>
 	{
 	public:		// [FRIENDS]
 		template<typename>
@@ -2167,7 +2167,7 @@ namespace dpl
 		friend	EntityPack_of<EntityT>;
 
 	private:	// [SUBTYPES]
-		using	MyComposition = Composite<EntityT, AllComponentTypes_of<EntityT>>;
+		using	MyComposition = MaybeComposite<EntityT, AllComponentTypes_of<EntityT>>;
 
 	protected:	// [INHERITED
 		using	MyComposition::MyComposition;

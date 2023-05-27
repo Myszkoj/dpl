@@ -81,6 +81,23 @@ namespace dpl
 		return variable;
 	}
 
+	template<is_container T>
+	inline void				import_t(					std::istream&			binary,
+														T&						container)
+	{
+		const auto SIZE = dpl::import_t<typename T::size_type>(binary);
+		container.resize(SIZE);
+		dpl::import_t<typename T::value_type>(binary, SIZE, container.data());
+	}
+
+	template<template<typename, size_t> class Array, typename T, size_t N>
+	inline void				import_t(					std::istream&			binary,
+														Array<T, N>&			container)
+	{
+		const auto SIZE = dpl::import_t<typename Array<T, N>::size_type>(binary);
+		dpl::import_t<typename Array<T, N>::value_type>(binary, SIZE, container.data());
+	}
+
 	template<typename T>
 	inline void				export_t(					std::ostream&			binary,
 														const T&				DATA)
@@ -113,28 +130,12 @@ namespace dpl
 		}
 	}
 
-	template<typename ContainerT>
-	inline void				import_static_container(	std::istream&			binary,
-														ContainerT&				container)
-	{
-		dpl::import_t<typename ContainerT::value_type>(binary, import_t<typename ContainerT::size_type>(binary), container.data());
-	}
-
-	template<typename ContainerT>
-	inline void				import_dynamic_container(	std::istream&			binary,
-														ContainerT&				container)
-	{
-		const auto SIZE = import_t<typename ContainerT::size_type>(binary);
-		container.resize(SIZE);
-		dpl::import_t<typename ContainerT::value_type>(binary, SIZE, container.data());
-	}
-	
-	template<typename ContainerT>
-	inline void				export_container(			std::ostream&			binary,
-														const ContainerT&		CONTAINER)
+	template<is_container T>
+	inline void				export_t(					std::ostream&			binary,
+														const T&				CONTAINER)
 	{
 		const auto SIZE = CONTAINER.size();
 		dpl::export_t(binary, SIZE);
-		dpl::export_t<typename ContainerT::value_type>(binary, SIZE, CONTAINER.data());
+		dpl::export_t<typename T::value_type>(binary, SIZE, CONTAINER.data());
 	}
 }

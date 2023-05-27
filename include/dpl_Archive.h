@@ -24,7 +24,7 @@ namespace dpl
 // definitions
 namespace dpl
 {
-	static constexpr uint32_t KEY_ENTRY_ASSOCIATION_ID = 11111111;
+	static inline constexpr uint32_t KEY_ENTRY_ASSOCIATION_ID = 11111111;
 
 	/*
 		Provides a means of gaining access to archive entries.

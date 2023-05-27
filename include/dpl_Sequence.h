@@ -132,11 +132,22 @@ namespace dpl
 
 	protected:	// [LIFECYCLE]
 		CLASS_CTOR				Sequence() = default;
+
 		CLASS_CTOR				Sequence(				const Sequence&				OTHER) = delete;
-		CLASS_CTOR				Sequence(				Sequence&&					other) noexcept = default;
+
+		CLASS_CTOR				Sequence(				Sequence&&					other) noexcept
+			: m_loop(std::move(other.m_loop))
+		{
+
+		}
+
 		Sequence&				operator=(				const Sequence&				OTHER) = delete;
 
-		Sequence&				operator=(				Sequence&&					other) noexcept = default;
+		Sequence&				operator=(				Sequence&&					other) noexcept
+		{
+			m_loop = std::move(other.m_loop);
+			return *this;
+		}
 
 		Sequence&				operator=(				Swap<Sequence>				other)
 		{
@@ -339,14 +350,51 @@ namespace dpl
 		template<typename CompT>
 		uint32_t				sort(					CompT&&						COMPARE)
 		{
-			uint32_t	numSwapps	= 0;
-			MyLink*		current		= m_loop.raw_next();
+			uint32_t		numSwapps	= 0;
+			MySequenceable*	current		= m_loop.raw_next();
 
 			while(!is_end(current))
 			{
-				MyLink* prev	= current->get_raw_prev();	// Current will be compared with the link before it.
-				MyLink* next	= current->get_raw_next();	// We need to store next link(future current) before we start.
-				T& tmp			= *current->cast();
+				MySequenceable* prev	= current->raw_previous();	// Current will be compared with the link before it.
+				MySequenceable* next	= current->raw_next();		// We need to store next link(future current) before we start.
+				T& tmp	= *current->cast();
+
+				current->detach();
+
+				while(!is_end(prev))
+				{
+					if(COMPARE(tmp, *prev->cast()))
+					{
+						++numSwapps;
+						prev = prev->raw_previous();
+					}
+					else
+					{
+						break;
+					}
+				}
+
+				if(prev)
+				{
+					current->attach_back(*prev);
+				}
+
+				// Sort next link.
+				current = next;
+			}
+
+			return numSwapps;
+
+			// OLD SOLUTION
+			/*
+			uint32_t		numSwapps	= 0;
+			MySequenceable*	current		= m_loop.raw_next();
+
+			while(!is_end(current))
+			{
+				MySequenceable* prev	= current->raw_previous();	// Current will be compared with the link before it.
+				MySequenceable* next	= current->raw_next();		// We need to store next link(future current) before we start.
+				T& tmp	= *current->cast();
 
 				while(!is_end(prev))
 				{
@@ -356,7 +404,7 @@ namespace dpl
 						current->get_raw_next()->Previous<T, ID>::link(*prev);
 						current->Next<T, ID>::link(*prev);
 						++numSwapps;
-						prev = current->get_raw_prev();
+						prev = current->raw_previous();
 					}
 					else
 					{
@@ -369,6 +417,7 @@ namespace dpl
 			}
 
 			return numSwapps;
+			*/
 		}
 	};
 }

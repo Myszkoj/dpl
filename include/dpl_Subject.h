@@ -9,7 +9,7 @@
 // declarations
 namespace dpl
 {
-	constexpr uint32_t SUBJECT_GROUP_ID = 1000000;
+	inline constexpr uint32_t SUBJECT_GROUP_ID = 1000000;
 
 
 	template<typename SubjectT>

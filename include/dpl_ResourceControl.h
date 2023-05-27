@@ -193,7 +193,7 @@ namespace dpl
 													ResourceControl<T>&	control)
 		{
 			MyLabel resourceName;
-			dpl::import_dynamic_container(binary, resourceName);
+			dpl::import_t(binary, resourceName);
 			if(resourceName.size() > 0)
 			{
 				auto* resource = control.find_resource(resourceName);
@@ -205,7 +205,7 @@ namespace dpl
 		{
 			static MyLabel NO_NAME;
 			const MyLabel& RESOURCE_NAME = this->is_valid() ? get_resource().get_label() : NO_NAME;
-			dpl::export_container(binary, RESOURCE_NAME);
+			dpl::export_t(binary, RESOURCE_NAME);
 		}
 
 	private: // functions

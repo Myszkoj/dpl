@@ -431,7 +431,7 @@ namespace tests
 		}
 	};
 
-	void test_commands()
+	inline void test_commands()
 	{
 		GlobalCalculator calc;
 		double& value = calc.value();

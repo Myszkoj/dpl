@@ -289,14 +289,14 @@ namespace dpl
 		bool						import_label(				std::istream&			binary)
 		{
 			MyLabel newName;
-			dpl::import_dynamic_container(binary, newName);
+			dpl::import_t(binary, newName);
 			return change_label(newName);
 		}
 
 		bool						export_label(				std::ostream&			binary) const
 		{
 			static const MyLabel NO_NAME;
-			dpl::export_container(binary, has_label()? get_label() : NO_NAME);
+			dpl::export_t(binary, has_label()? get_label() : NO_NAME);
 			return has_label();
 		}
 	};

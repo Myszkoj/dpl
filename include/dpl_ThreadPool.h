@@ -68,7 +68,7 @@ namespace dpl
 		bool						bTerminate;
 
 	public: // lifecycle
-		CLASS_CTOR							ThreadPool(							const uint32_t			NUM_THREADS = std::thread::hardware_concurrency())
+		CLASS_CTOR						ThreadPool(							const uint32_t			NUM_THREADS = std::thread::hardware_concurrency())
 			: m_mainThreadID(std::this_thread::get_id())
 			, m_numTasks(0)
 			, m_numWorkers(0)
@@ -77,33 +77,33 @@ namespace dpl
 			start(NUM_THREADS);
 		}
 
-		CLASS_CTOR							ThreadPool(							const ThreadPool&		OTHER) = delete;
+		CLASS_CTOR						ThreadPool(							const ThreadPool&		OTHER) = delete;
 
-		CLASS_CTOR							ThreadPool(							ThreadPool&&			other) noexcept = delete;
+		CLASS_CTOR						ThreadPool(							ThreadPool&&			other) noexcept = delete;
 
-		CLASS_DTOR							~ThreadPool()
+		CLASS_DTOR						~ThreadPool()
 		{
 			stop();
 		}
 
-		ThreadPool&							operator=(							const ThreadPool&		OTHER) = delete;
+		ThreadPool&						operator=(							const ThreadPool&		OTHER) = delete;
 
-		ThreadPool&							operator=(							ThreadPool&&			other) noexcept = delete;
+		ThreadPool&						operator=(							ThreadPool&&			other) noexcept = delete;
 			
 	public: // functions
-		inline size_t						get_numWorkers() const
+		size_t							get_numWorkers() const
 		{
 			std::lock_guard<std::mutex> lk(m_mtx);
 			return m_numWorkers;
 		}
 
-		inline size_t						get_numTasks() const
+		size_t							get_numTasks() const
 		{
 			std::lock_guard<std::mutex> lk(m_mtx);
 			return m_numTasks;
 		}
 
-		inline void							add_task(							Task					task)
+		void							add_task(							Task					task)
 		{
 			{std::lock_guard lk(m_mtx);
 				m_tasks.emplace(std::move(task));
@@ -121,8 +121,8 @@ namespace dpl
 				create_task(&Class::method, &Obj, args...);
 		*/
 		template<typename F, typename... Args>
-		auto								create_task(						F&&						function, 
-																				Args&&...				args)
+		auto							create_task(						F&&						function, 
+																			Args&&...				args)
 		{
 			using ret_t = typename std::invoke_result_t<F&&, Args&&...>;
 
@@ -137,7 +137,7 @@ namespace dpl
 			return result;
 		}
 
-		void								wait(								const ErrorCallback&	ERROR_CALLBACK = &log_and_throw_first_worker_error)
+		void							wait(								const ErrorCallback&	ERROR_CALLBACK = &log_and_throw_first_worker_error)
 		{
 #ifdef _DEBUG
 			if(std::this_thread::get_id() != m_mainThreadID)
@@ -168,25 +168,25 @@ namespace dpl
 		}
 
 	public: // error handling
-		static void							log_and_throw_first_worker_error(	const Error&			ERROR)
+		static void						log_and_throw_first_worker_error(	const Error&			ERROR)
 		{
 			throw dpl::Logger::ref().push_error("Worker[%d] failed: %s", ERROR.workerID, ERROR.message().c_str());
 		}
 
 	private: // functions
 		template <class T>
-		inline std::reference_wrapper<T>	wrap(								T&						val)
+		std::reference_wrapper<T>		wrap(								T&						val)
 		{
 			return std::ref(val);
 		}
 
 		template <class T>
-		inline T&&							wrap(								T&&						val)
+		T&&								wrap(								T&&						val)
 		{
 			return std::forward<T>(val);
 		}
 
-		inline void							start(								const uint32_t			NUM_THREADS)
+		void							start(								const uint32_t			NUM_THREADS)
 		{
 			for (uint32_t workerID = 0; workerID < NUM_THREADS; ++workerID) 
 			{
@@ -194,7 +194,7 @@ namespace dpl
 			}
 		}
 
-		inline void							add_worker(							const uint32_t			WORKER_ID)
+		void							add_worker(							const uint32_t			WORKER_ID)
 		{
 			std::thread([&, WORKER_ID]
 			{
@@ -241,7 +241,7 @@ namespace dpl
 			}).detach();
 		}
 
-		void								notify_worker_release()
+		void							notify_worker_release()
 		{
 			std::unique_lock lock(m_mtx);
 			if(m_numWorkers > 0)
@@ -252,8 +252,8 @@ namespace dpl
 			}
 		}
 
-		inline void							push_error(							const uint32_t			WORKER_ID,
-																				const char*				MESSAGE)
+		void							push_error(							const uint32_t			WORKER_ID,
+																			const char*				MESSAGE)
 		{
 			{std::lock_guard<std::mutex> lk(m_mtx);
 				m_errors.emplace_back(WORKER_ID, MESSAGE);
@@ -263,7 +263,7 @@ namespace dpl
 			m_order.notify_all();
 		}
 
-		void								stop()
+		void							stop()
 		{
 			std::unique_lock lk(m_mtx);
 			bTerminate = true;
@@ -304,7 +304,7 @@ namespace dpl
 			std::vector<Task>	tasks;
 			uint64_t			rating = 0;
 
-			inline void add_task(const uint32_t RATING, Task task)
+			void add_task(const uint32_t RATING, Task task)
 			{
 				tasks.emplace_back(task);
 				rating += RATING;
@@ -332,14 +332,14 @@ namespace dpl
 		}
 
 	public: // functions
-		inline uint32_t numJobs() const
+		uint32_t		numJobs() const
 		{
 			return jobs.size();
 		}
 
-		void			reserve_tasks(	const size_t			NUM_TASKS)
+		void			reserve_tasks(	const uint32_t			NUM_TASKS)
 		{
-			const size_t CAPACITY = 2 * (1 + NUM_TASKS/jobs.size());
+			const auto CAPACITY = 2 * (1 + NUM_TASKS/jobs.size());
 			jobs.for_each([&](Job& job)
 			{
 				job.tasks.reserve(CAPACITY);
@@ -349,7 +349,7 @@ namespace dpl
 		/*
 			Add tasks with user defined rating of time complexity.
 		*/
-		inline void		add_task(		const uint32_t			RATING, 
+		void			add_task(		const uint32_t			RATING, 
 										Task					task)
 		{
 			jobs[workOrder[0]].add_task(RATING, task);
@@ -363,9 +363,9 @@ namespace dpl
 			{
 				ThreadPool::add_task([&]()
 				{
-					for(auto& iTask : job.tasks)
+					for(auto index = 0u; index < job.tasks.size(); ++index)
 					{
-						iTask();
+						job.tasks[index]();
 					}
 				});
 			});
