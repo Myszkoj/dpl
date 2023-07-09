@@ -20,85 +20,85 @@ namespace dpl
 
 	public: // lifecycle
 		template<typename... Args>
-		CLASS_CTOR			ReadOnly(	Args&&...					args) 
+		CLASS_CTOR		ReadOnly(	Args&&...					args) 
 			: data(std::forward<Args>(args)...)
 		{
 		}
 
-		CLASS_CTOR			ReadOnly(	ReadOnly&&					other) noexcept
+		CLASS_CTOR		ReadOnly(	ReadOnly&&					other) noexcept
 			: data(std::move(other.data))
 		{
 		}
 
-		CLASS_CTOR			ReadOnly(	const ReadOnly&				other)
+		CLASS_CTOR		ReadOnly(	const ReadOnly&				other)
 			: data(other.data)
 		{
 		}
 
 	public: // access
-		inline const DataT&	operator()() const
+		const DataT&	operator()() const
 		{
 			return data;
 		}
 
-		inline operator		const DataT&() const
+		operator		const DataT&() const
 		{
 			return data;
 		}
 
-		inline bool			operator==(	const DataT&				other) const
+		bool			operator==(	const DataT&				other) const
 		{
 			return data == other;
 		}
 
-		inline bool			operator!=(	const DataT&				other) const
+		bool			operator!=(	const DataT&				other) const
 		{
 			return data != other;
 		}
 
-		inline bool			operator==(	const ReadOnly&				other) const
+		bool			operator==(	const ReadOnly&				other) const
 		{
 			return data == other.data;
 		}
 
-		inline bool			operator!=(	const ReadOnly&				other) const
+		bool			operator!=(	const ReadOnly&				other) const
 		{
 			return data != other.data;
 		}
 
-		inline bool			operator&&(	const DataT&				other) const
+		bool			operator&&(	const DataT&				other) const
 		{
 			return data && other;
 		}
 
-		inline bool			operator||(	const DataT&				other) const
+		bool			operator||(	const DataT&				other) const
 		{
 			return data || other;
 		}
 
 	private: friend OwnerT; // access
-		inline void			swap(		ReadOnly<DataT, OwnerT>&	other)
+		void			swap(		ReadOnly<DataT, OwnerT>&	other)
 		{
 			std::swap(data, other.data);
 		}
 
-		inline DataT&		operator*()
+		DataT&			operator*()
 		{
 			return data;
 		}
 
-		inline DataT*		operator->()
+		DataT*			operator->()
 		{
 			return &data;
 		}
 
-		inline ReadOnly&	operator=(	ReadOnly&&					other) noexcept
+		ReadOnly&		operator=(	ReadOnly&&					other) noexcept
 		{
 			data = std::move(other.data);
 			return *this;
 		}
 
-		inline ReadOnly&	operator=(	const ReadOnly&				other)
+		ReadOnly&		operator=(	const ReadOnly&				other)
 		{
 			if(this != &other)
 			{
@@ -108,13 +108,13 @@ namespace dpl
 			return *this;
 		}
 
-		inline ReadOnly&	operator=(	const DataT&				data)
+		ReadOnly&		operator=(	const DataT&				data)
 		{
 			this->data = data;
 			return *this;
 		}
 
-		inline ReadOnly&	operator=( DataT&&						data) noexcept
+		ReadOnly&		operator=( DataT&&						data) noexcept
 		{
 			this->data = std::move(data);
 			return *this;

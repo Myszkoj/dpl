@@ -17,8 +17,13 @@
 
 /*
 	[TODO]:
+	- PartnerBase::set_partner
+	- ParentBase::add_child (ONE_TO_ONE relation)
 	- entity cmd locking (lock all DEPENDANT entities that were created with commands)
 	- custom factory pattern for EntityManager and EntityPack
+	- parent-child relation should not be possible if parent type is derived from one of the types that are already on the child's list of parents
+	- parent-child relation should not be possible if child type is derived from one of the types that are already on the parent's list of children
+	- remove Related class, instead create inheritance: MaybeIdentified <- Child <- Partner <- Parent
 */
 
 
@@ -39,6 +44,9 @@ namespace dpl
 	template<typename EntityT>
 	class	EntityPack_of;
 
+	template<typename EntityT>
+	class	EntityPackView;
+
 	class	EntityManager;
 }
 
@@ -47,14 +55,14 @@ namespace dpl
 {
 	enum	RelationType
 	{
-		ONE_TO_ONE, // One parent can only have one child of the given type.
-		ONE_TO_MANY // One parent can have many children of given type.
+		ONE_TO_ONE, // A parent can only have one child of the given type.
+		ONE_TO_MANY // A parent can have many children of the given type.
 	};
 
 	enum	Dependency
 	{
-		WEAK_DEPENDENCY,
-		STRONG_DEPENDENCY	// Child will be destroyed along with the parent.
+		WEAK_DEPENDENCY,	// Child will not be destroyed along with the parent on EntityManager::cmd_destroy_hierarchy.
+		STRONG_DEPENDENCY	// Child will be destroyed along with the parent on EntityManager::cmd_destroy_hierarchy.
 	};
 
 	template<RelationType USER_TYPE, Dependency USER_DEPENDENCY>
@@ -67,8 +75,8 @@ namespace dpl
 	template<typename ParentT, typename ChildT>
 	struct	Relation_between;
 
-	template<typename ParentT, typename ChildT>
-	struct	AcceptChild;
+	//template<typename ParentT, typename ChildT>
+	//struct	ChildFilter;
 
 	template<typename EntityT>
 	struct	Description_of;
@@ -81,6 +89,9 @@ namespace dpl
 
 	template<typename EntityT>
 	using	ChildList_of		= typename Description_of<EntityT>::ChildTypes;
+
+	template<typename EntityT>
+	using	PartnerList_of		= typename Description_of<EntityT>::PartnerTypes;
 
 	template<typename EntityT>
 	using	ComponentList_of	= typename Description_of<EntityT>::ComponentTypes;
@@ -114,12 +125,6 @@ namespace dpl
 	template<typename T, typename ENTITY_TYPES>
 	concept is_one_of_base_types	=  dpl::is_TypeList<ENTITY_TYPES> 
 									&& ENTITY_TYPES::template any<IsDerived<T>::template EntityType>();
-
-	template<typename ChildT, typename ParentT>
-	concept one_of_child_types_of	= dpl::is_one_of<ChildT, ChildList_of<ParentT>>;
-
-	template<typename ParentT, typename ChildT>
-	concept one_of_parent_types_of	= dpl::is_one_of<ParentT, ParentList_of<ChildT>>;
 
 	template<typename T, typename ENTITY_TYPES> requires dpl::is_TypeList<ENTITY_TYPES> 
 	using	Base_in_list			=  ENTITY_TYPES::template Subtypes<IsDerived<T>::template EntityType>::template At<0>;
@@ -185,6 +190,25 @@ namespace dpl
 
 
 	template<typename EntityT>
+	struct	PartnerQuery
+	{
+		using Base					= std::conditional_t<has_Base<EntityT>, typename Base_of<EntityT>, void>;
+		using OwnPartnerTypes		= typename PartnerList_of<EntityT>;
+		using InheritedPartnerTypes	= typename PartnerQuery<Base>::AllPartnerTypes;
+
+		using AllPartnerTypes		= dpl::merge_t<	OwnPartnerTypes, 
+													InheritedPartnerTypes>;
+	};
+
+	template<>
+	struct	PartnerQuery<void>
+	{
+		using AllPartnerTypes		= dpl::TypeList<>;
+	};
+
+
+
+	template<typename EntityT>
 	struct	ComponentQuery
 	{
 		using Base						= std::conditional_t<has_Base<EntityT>, typename Base_of<EntityT>, void>;
@@ -240,7 +264,20 @@ namespace dpl
 	using	AllChildTypes_of		= typename ChildQuery<EntityT>::AllChildTypes;
 
 	template<typename EntityT>
+	using	AllPartnerTypes_of		= typename PartnerQuery<EntityT>::AllPartnerTypes;
+
+	template<typename EntityT>
 	using	AllComponentTypes_of	= typename ComponentQuery<EntityT>::AllComponentTypes;
+
+
+	template<typename ParentT, typename ChildT>
+	concept one_of_parent_types_of	= dpl::is_one_of<ParentT, AllParentTypes_of<ChildT>>;
+
+	template<typename ChildT, typename ParentT>
+	concept one_of_child_types_of	= dpl::is_one_of<ChildT, AllChildTypes_of<ParentT>>;
+
+	template<typename PartnerT, typename EntityT>
+	concept one_of_partner_types_of	= dpl::is_one_of<PartnerT, AllPartnerTypes_of<EntityT>>;
 }
 
 // identity & origin		(internal)
@@ -437,7 +474,7 @@ namespace dpl
 		using	InvokeIdentity = std::function<void(const Identity&)>;
 
 	public:		// [COMMANDS]
-		class	DestroyHierarchy;
+		class	CMD_DestroyHierarchy;
 
 	public:		// [CONSTANTS]
 		static const uint32_t INVALID_ENTITY_ID = std::numeric_limits<uint32_t>::max();
@@ -514,6 +551,12 @@ namespace dpl
 							, private dpl::StaticHolder<Identity, EntityManager>
 	{
 	public:		// [COMMANDS]
+		template<typename T>
+		class CommandGroupOf;
+
+		template<typename ParentT, template<typename, typename> class RelationCommand>
+		class MultiTypeCommand;
+
 		template<is_Entity T>
 		class CMD_Create;
 
@@ -540,13 +583,34 @@ namespace dpl
 		class CMD_OrphanChildrenIf;
 
 		template<is_FinalEntity T>
-		class CMD_OrphanAllChildren;
+		class CMD_OrphanAllChildrenOf;
+
+		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+		class CMD_Involve;
+
+		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+		class CMD_Disinvolve;
+
+		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+		class CMD_DisinvolveAll;
+
+	public:		// [SUBTYPES]
+		using	EntityIndex	= uint32_t;
+		using	NumEntities	= uint32_t;
+
+		template<is_Entity T> using	InvokeEntity					= std::function<void(T&)>;
+		template<is_Entity T> using	InvokeEntityBuffer				= std::function<void(T*, NumEntities)>;
+		template<is_Entity T> using	InvokeConstEntity				= std::function<void(const T&)>;
+		template<is_Entity T> using	InvokeConstEntityBuffer			= std::function<void(const T*, NumEntities)>;
+		template<is_Entity T> using	InvokeIndexedEntity				= std::function<void(T&, EntityIndex)>;
+		template<is_Entity T> using	InvokeConstIndexedEntity		= std::function<void(const T&, EntityIndex)>;
+		template<is_Entity T> using	InvokeSimilarEntityBuffer		= std::function<void(EntityPackView<T>&)>;
 
 	private:	// [DATA]
 		BinaryInvoker m_invoker;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR				EntityManager(			dpl::Multition&			multition)
+		CLASS_CTOR				EntityManager(				dpl::Multition&								multition)
 			: Singleton(multition)
 		{
 
@@ -555,6 +619,151 @@ namespace dpl
 		CLASS_DTOR				~EntityManager()
 		{
 			dpl::no_except([&](){	destroy_all_entities();	});
+		}
+
+	public:		// [COMMAND FUNCTIONS]
+		void					undo_command()
+		{
+			m_invoker.undo();
+		}
+
+		void					redo_command()
+		{
+			m_invoker.redo();
+		}
+
+		void					clear_commands()
+		{
+			m_invoker.clear();
+		}
+
+		template<is_Entity T>
+		T&						cmd_create(					const Name									NAME)
+		{
+			EntityManager::assure_pack_of<T>();
+			m_invoker.invoke<CMD_Create<T>>(NAME);
+			return EntityPack_of<T>::ref().last();
+		}
+
+		template<is_Entity T>
+		T&						cmd_create(					const Name::Type							TYPE,
+															const std::string&							STR)
+		{
+			EntityManager::assure_pack_of<T>();
+			m_invoker.invoke<CMD_Create<T>>(TYPE, STR);
+			return EntityPack_of<T>::ref().last();
+		}
+
+		template<is_Entity T>
+		T&						cmd_create(					const Name::Type							TYPE,
+															const std::string_view						STR)
+		{
+			EntityManager::assure_pack_of<T>();
+			m_invoker.invoke<CMD_Create<T>>(TYPE, STR);
+			return EntityPack_of<T>::ref().last();
+		}
+
+		template<is_Entity T>
+		void					cmd_create_group_of(		const std::string&							GROUP_PREFIX,
+															const uint32_t								GROUP_SIZE)
+		{
+			EntityManager::assure_pack_of<T>();
+			m_invoker.invoke<CMD_CreateGroupOf<T>>(GROUP_PREFIX, GROUP_SIZE);
+		}
+
+		void					cmd_destroy(				const Identity&								ENTITY);
+
+		template<is_Entity ParentT, is_Entity ChildT>
+		void					cmd_destroy_children_if(	const Entity<ParentT>&						PARENT)
+		{
+			m_invoker.invoke<CMD_DestroyChildrenIf<ParentT, ChildT>>(PARENT);
+		}
+
+		template<is_Entity ParentT>
+		void					cmd_destroy_all_children_of(const Entity<ParentT>&						PARENT)
+		{
+			m_invoker.invoke<CMD_DestroyAllChildrenOf<ParentT>>(PARENT);
+		}
+
+		void					cmd_destroy_hierarchy(		const Identity&								ENTITY);
+
+		void					cmd_rename(					const Identity&								ENTITY,
+															const Name									NEW_NAME);
+
+		void					cmd_rename(					const Identity&								ENTITY,
+															const Name::Type							TYPE,
+															const std::string&							STR);
+
+		void					cmd_rename(					const Identity&								ENTITY,
+															const Name::Type							TYPE,
+															const std::string_view						STR);
+
+		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
+		void					cmd_adopt(					const Entity<ParentT>&						PARENT,
+															const Entity<ChildT>&						CHILD)
+		{
+			m_invoker.invoke<CMD_Adopt<ParentT, ChildT>>(PARENT, CHILD);
+		}
+
+		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
+		void					cmd_orphan(					const Entity<ChildT>&						CHILD)
+		{
+			m_invoker.invoke<CMD_Orphan<ParentT, ChildT>>(CHILD);
+		}
+
+		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
+		void					cmd_orphan_children_if(		const Entity<ParentT>&						PARENT)
+		{
+			m_invoker.invoke<CMD_OrphanChildrenIf<ParentT, ChildT>>(PARENT);
+		}
+
+		template<is_FinalEntity ParentT>
+		void					cmd_orphan_all_children_of(	const Entity<ParentT>&						PARENT)
+		{
+			m_invoker.invoke<CMD_OrphanAllChildrenOf<ParentT>>(PARENT);
+		}
+
+	public:		// [ITERATION]
+		template<is_Entity T>
+		void					for_each(					const InvokeEntity<T>&						INVOKE)
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeEntityBuffer<T>&				INVOKE)
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeConstEntity<T>&					INVOKE) const
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeConstEntityBuffer<T>&			INVOKE) const
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeIndexedEntity<T>&				INVOKE)
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeConstIndexedEntity<T>&			INVOKE)
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeSimilarEntityBuffer<T>&			INVOKE)
+		{
+			EntityPack_of<T>::get().for_each(INVOKE);
 		}
 
 	public:		// [FUNCTIONS]
@@ -569,21 +778,19 @@ namespace dpl
 			return Variation::create_variant<EntityPack_of<T>>();
 		}
 
+	private:	// [INTERNAL FUNCTIONS]
+		template<is_Entity T>
+		void					assure_pack_of()
+		{
+			if(!EntityPack_of<T>::ptr()) EntityManager::create_EntityPack_of<T>();
+		}
+
 		void					destroy_all_entities()
 		{
 			Variation::for_each_variant([](EntityPack& pack)
 			{
 				pack.destroy_all_entities();
 			});
-		}
-
-	public:		// [COMMAND FUNCTIONS]
-		template<is_Entity T>
-		T&						create_cmd(				const Name				NAME)
-		{
-			if(!EntityPack_of<T>::ptr()) EntityManager::create_EntityPack_of<T>();
-			m_invoker.invoke<CMD_Create<T>>(NAME);
-			return EntityPack_of<T>::ref().last();
 		}
 	};
 }
@@ -723,12 +930,15 @@ namespace dpl
 	class	Child;
 
 
+	// We use this offset internally to not block the inheritance from dpl::Sequenceable with default ID.
+	constexpr uint32_t RELATION_ID_OFFSET = 10000;
+
+
 	template<typename ParentT, typename ChildT>
 	constexpr uint32_t		get_relation_ID()
 	{
-		constexpr uint32_t ID_OFFSET = 10000; //<-- We use this offset to not block the inheritance from dpl::Sequenceable with default ID.
 		using ParentTypeList = ParentList_of<ChildT>;
-		return ID_OFFSET + ParentTypeList::template index_of<ParentT>();
+		return RELATION_ID_OFFSET + ParentTypeList::template index_of<ParentT>();
 	}
 
 	template<typename ParentT, typename ChildT>
@@ -1186,14 +1396,12 @@ namespace dpl
 			
 		bool				add_child(					ChildT&						child)
 		{
-			if (AcceptChild<ParentT, ChildT>()(static_cast<const ParentT&>(*this), child))
+			/*
+			if (ChildFilter<ParentT, ChildT>()(static_cast<const ParentT&>(*this), child))
 			{
-				if (const Identity* FIRST = first_child())
-				{
-					if (static_cast<Identity&>(child).storageID() != FIRST->storageID()) 
-						return false;
-				}
+				// TODO: add member here
 			}
+			*/
 			return MyGroupT::add_end_member(child);
 		}
 
@@ -1481,6 +1689,184 @@ namespace dpl
 		void					destroy_children_of_type()
 		{
 			ParentBase_of<ChildT>::destroy_all_children();
+		}
+	};
+
+
+	// Specialization of parent without children.
+	template<typename ParentT>
+	class	Parent<ParentT, dpl::TypeList<>>{};
+}
+
+// Partner interface		(internal)
+namespace dpl
+{
+	template<typename MeT, typename YouT>
+	constexpr uint32_t	get_partner_ID()
+	{
+		using PartnerTypeList = PartnerList_of<MeT>;
+		return dpl::RELATION_ID_OFFSET + ParentList_of<MeT>::SIZE + PartnerTypeList::template index_of<ParentT>();
+	}
+
+
+	template<typename MeT, dpl::is_TypeList PARTNER_TYPES>
+	class	Partner;
+
+
+	template<typename MeT, typename YouT>
+	class	PartnerBase : private dpl::Association<MeT, YouT, dpl::get_partner_ID<MeT, YouT>()>
+	{
+	private: // subtypes
+		static const uint32_t RELATION_ID	= dpl::get_partner_ID<MeT, YouT>();
+		using	MyPartnerT					= PartnerBase<YouT, MeT>;
+		using	MyBaseT						= dpl::Association<MeT, YouT, RELATION_ID>;
+		using	MyLinkT						= dpl::Association<YouT, MeT, RELATION_ID>;
+
+	public: // friends
+		friend	MyPartnerT;
+		friend	MyBaseT;
+		friend	MyLinkT;
+
+		template<typename, dpl::is_TypeList>
+		friend class	Partner;
+
+	private: // lifecycle
+		CLASS_CTOR			PartnerBase() = default;
+		CLASS_CTOR			PartnerBase(					PartnerBase&&			other) noexcept = default;
+		PartnerBase&		operator=(						PartnerBase&&			other) noexcept = default;
+
+	private: // lifecycle (deleted)
+		CLASS_CTOR			PartnerBase(					const PartnerBase&		OTHER) = delete;
+		PartnerBase&		operator=(						const PartnerBase&		OTHER) = delete;
+
+	private: // functions
+		bool				has_partner() const
+		{
+			return MyBaseT::is_linked();
+		}
+
+		bool				set_partner(					YouT&					partner)
+		{
+			return MyBaseT::link(partner);
+		}
+
+		bool				remove_partner()
+		{
+			return MyBaseT::unlink();
+		}
+
+		bool				remove_partner(					YouT&					partner)
+		{
+			if(MyBaseT::other() != &partner) return false;
+			return Partner::remove_partner();
+		}
+
+		YouT&				get_partner()
+		{
+			return *MyBaseT::other();
+		}
+
+		const YouT&			get_partner() const
+		{
+			return *MyBaseT::other();
+		}
+
+		void				save_partner(					BinaryState&			state) const
+		{
+			Reference::save_to_binary_opt(MyBaseT::other(), state);
+		}
+
+		void				load_partner(					BinaryState&			state)
+		{
+			MyBaseT::unlink();
+			const Reference REFERENCE(state);
+			if(MyPartnerT* child = REFERENCE.find<YouT>())
+			{
+				MyBaseT::link(*child);
+			}
+			else // log error
+			{
+				dpl::Logger::ref().push_error("Fail to import relation. The specified partner could not be found: " + REFERENCE.name());
+			}
+		}
+	};
+
+
+	template<typename MeT, typename... PartnerTs>
+	class	Partner<MeT, dpl::TypeList<PartnerTs...>> : public PartnerBase<MeT, PartnerTs>...
+	{
+	public:		// [SUBTYPES]
+		using	PARTNER_TYPES	= dpl::TypeList<PartnerTs...>;
+
+	public:		// [FRIENDS]
+		friend	EntityManager;
+
+		template<typename, typename>
+		friend	class PartnerBase;
+
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR				Partner() = default;
+		CLASS_CTOR				Partner(					Partner&&			other) noexcept = default;
+		Partner&				operator=(					Partner&&			other) noexcept = default;
+
+	private:	// [LIFECYCLE] (deleted)
+		CLASS_CTOR				Partner(					const Partner&		OTHER) = delete;
+		Partner&				operator=(					const Partner&		OTHER) = delete;
+
+	public:		// [FUNCTIONS]
+		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
+		bool					has_partner() const
+		{
+			return PartnerBase<MeT, PartnerT>::has_partner();
+		}
+
+		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
+		PartnerT&				get_partner()
+		{
+			return PartnerBase<MeT, PartnerT>::get_partner();
+		}
+
+		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
+		const PartnerT&			get_partner() const
+		{
+			return PartnerBase<MeT, PartnerT>::get_partner();
+		}
+
+	protected:	// [FUNCTIONS]
+		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
+		bool					set_partner(				PartnerT&			partner)
+		{
+			return PartnerBase<MeT, Base_in_list<PartnerT, PARTNER_TYPES>>::add_partner(partner);
+		}
+
+		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
+		bool					remove_partner(				PartnerT&			partner)
+		{
+			return PartnerBase<MeT, Base_in_list<PartnerT, PARTNER_TYPES>>::remove_partner(partner);
+		}
+
+		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
+		bool					remove_partner()
+		{
+			return PartnerBase<MeT, Base_in_list<PartnerT, PARTNER_TYPES>>::remove_partner();
+		}
+
+		template<dpl::is_same_as<MeT>		This = MeT>
+		void					remove_all_partners_of_this()
+		{
+			(PartnerBase<MeT, PartnerTs>::remove_partner(), ...);
+		}
+
+		template<dpl::is_same_as<MeT>		This = MeT>
+		void					save_partners_of_this(		BinaryState&		state) const
+		{
+			(PartnerBase<MeT, PartnerTs>::save_partner(state), ...);
+		}
+
+		template<dpl::is_same_as<MeT>		This = MeT>
+		void					load_children_of_this(		BinaryState&		state)
+		{
+			(PartnerBase<MeT, PartnerTs>::load_partner(state), ...);
 		}
 	};
 
@@ -1872,58 +2258,58 @@ namespace dpl
 			Row&				operator=(			const Row&				OTHER) = delete;
 
 		public: // functions
-			inline uint32_t		offset() const
+			uint32_t			offset() const
 			{
 				if constexpr(IS_STREAMABLE)	return MyStorageBase::offset;
 				else							return 0;
 			}
 
-			inline T*			modify()
+			T*					modify()
 			{
 				if constexpr(IS_STREAMABLE)	return MyStorageBase::modify();
 				else							return MyStorageBase::data();
 			}
 
-			inline const T*		read() const
+			const T*			read() const
 			{
 				if constexpr(IS_STREAMABLE)	return MyStorageBase::read();
 				else							return MyStorageBase::data();
 			}
 
-			inline void			modify_each(		const Invocation&		INVOKE)
+			void				modify_each(		const Invocation&		INVOKE)
 			{
 				if constexpr(IS_STREAMABLE)	return MyStorageBase::modify_each(INVOKE);
 				else							return MyStorageBase::for_each(INVOKE);
 			}
 
-			inline void			read_each(			const ConstInvocation&	INVOKE) const
+			void				read_each(			const ConstInvocation&	INVOKE) const
 			{
 				if constexpr(IS_STREAMABLE)	return MyStorageBase::read_each(INVOKE);
 				else							return MyStorageBase::for_each(INVOKE);
 			}
 
-			inline T*			at(					const uint32_t			COLUMN_INDEX)
+			T*					at(					const uint32_t			COLUMN_INDEX)
 			{
 				return modify() + COLUMN_INDEX;
 			}
 
-			inline const T*		at(					const uint32_t			COLUMN_INDEX) const
+			const T*			at(					const uint32_t			COLUMN_INDEX) const
 			{
 				return read() + COLUMN_INDEX;
 			}
 
-			inline uint32_t		index_of(			const T*				COMPONENT_ADDRESS) const
+			uint32_t			index_of(			const T*				COMPONENT_ADDRESS) const
 			{
 				return MyStorageBase::index_of(COMPONENT_ADDRESS);
 			}
 
 		private: // internal functions
-			inline T*			enlarge(			const uint32_t			NUM_COLUMNS)
+			T*					enlarge(			const uint32_t			NUM_COLUMNS)
 			{
 				return MyStorageBase::enlarge(NUM_COLUMNS);
 			}
 
-			inline void			destroy_at(			const uint32_t			COLUMN_INDEX)
+			void				destroy_at(			const uint32_t			COLUMN_INDEX)
 			{
 				MyStorageBase::fast_erase(COLUMN_INDEX);
 			}
@@ -2000,7 +2386,7 @@ namespace dpl
 namespace dpl
 {
 	template<typename EntityT>
-	concept is_Composite			= (AllComponentTypes_of<EntityT>::SIZE > 0);
+	concept is_Composite = (AllComponentTypes_of<EntityT>::SIZE > 0);
 
 
 	template<typename EntityT, is_ComponentTypeList COMPONENT_TYPES>
@@ -2110,38 +2496,51 @@ namespace dpl
 namespace dpl
 {
 	// Specialize to describe your entity.
+	/*
+	* BaseType - type of the entity that this entity derives from (same type indicate no inheritance, non-entity type yelds UB)
+	* ParentTypes - types of entities assigned as a "parent node"
+	* ChildTypes - types of entities assigned as a "child node"
+	* PartnerTypes - types of entities paired to this one (no special relation)
+	* ComponentTypes - List of data types assigned to this entity
+	* NOTES: 
+	*	- your specialization must contain BaseType and the same type list names, any other typedef, or data will be ignored
+	*	- all types specified by the base entity are used under the hood by all entity types that derive from it
+	*	- all types must be unique (double check types in the base class description)
+	*/
 	template<typename EntityT>
 	struct	Description_of
 	{
-		using BaseType			= EntityT; //<-- Same type indicate no inheritance.
+		using BaseType			= EntityT;
 		using ParentTypes		= dpl::TypeList<>;
 		using ChildTypes		= dpl::TypeList<>;
+		using PartnerTypes		= dpl::TypeList<>;
 		using ComponentTypes	= dpl::TypeList<>;
 	};
 
 
 	// Specialize as derived from Relation (look@ RelationType).
 	template<typename ParentT, typename ChildT>
-	struct	Relation_between	: public Relation<ONE_TO_MANY, WEAK_DEPENDENCY>{};
+	struct	Relation_between : public Relation<ONE_TO_MANY, WEAK_DEPENDENCY> {};
 
 
-	// Specialize to filter out selected children.
+	/*
+	// Specialize to filter out unwanted children.
 	template<typename ParentT, typename ChildT>
-	struct	AcceptChild
+	struct	ChildFilter
 	{
 		bool operator()(const ParentT& PARENT, const ChildT& CHILD) const
 		{
 			return true;
 		}
 	};
-
+	*/
 
 
 	/*
 		[BASICS]:
 		- Each user EntityT must be derived from Entity<EntityT>.
 		- The user may specialize Description_of<EntityT> to modify internal structure of the Entity<EntityT>.
-	 
+
 		[IDENTITY]:
 		- Each entity is associated with a unique name that can be used to distinguish it from others, or to query it in the EntityPack_of<EntityT>.
 		- In addition to its name, each entity has a storageID that indicates the entity pack in which it is stored (its origin).
@@ -2149,7 +2548,7 @@ namespace dpl
 		[RELATIONS]:
 		- Specialization of Relation_between<ParentT, ChildT> further modifies internal structure and behavior of the Entity<EntityT>.
 		- The derived entity inherits relations defined by its base entity.
-		- The order of linked children is undefined.	
+		- The order of linked children is undefined.
 
 		[COMPOSITION]:
 		- A separate, contiguous buffer is allocated to store each type of component.
@@ -2158,7 +2557,7 @@ namespace dpl
 		- To meet the requirement, non-trivially destructible components must have operator>>(std::ostream&) and operator<<(std::istream&) implemented.
 	*/
 	template<typename EntityT>
-	class	Entity	: public MaybeComposite<EntityT, AllComponentTypes_of<EntityT>>
+	class	Entity : public MaybeComposite<EntityT, AllComponentTypes_of<EntityT>>
 	{
 	public:		// [FRIENDS]
 		template<typename>
@@ -2173,41 +2572,41 @@ namespace dpl
 		using	MyComposition::MyComposition;
 
 	protected:	// [LIFECYCLE]	
-		CLASS_CTOR				Entity(		Entity&&		other) noexcept = default;
-		Entity&					operator=(	Entity&&		other) noexcept = default;
+		CLASS_CTOR				Entity(Entity&& other) noexcept = default;
+		Entity& operator=(Entity&& other) noexcept = default;
 
 	private:	// [LIFECYCLE] (deleted)
-		CLASS_CTOR				Entity(		const Entity&	OTHER) = delete;
-		Entity&					operator=(	const Entity&	OTHER) = delete;
+		CLASS_CTOR				Entity(const Entity& OTHER) = delete;
+		Entity& operator=(const Entity& OTHER) = delete;
 
 	public:		// [FUNCTIONS]
 		// Override to save state of the EntityT members.
-		void					save_state(	BinaryState&	state) const{}
+		void					save_state(BinaryState& state) const {}
 
 		// Override to load state of the EntityT members.
-		void					load_state(	BinaryState&	state){}
+		void					load_state(BinaryState& state) {}
 
 		bool					has_known_storage() const
 		{
 			return MyComposition::storageID() == EntityPack_of<EntityT>::ref().typeID();
 		}
 
-		// Use with caution!
+		// Use with caution! (TODO: hide from the user?)
 		void					selfdestruct()
 		{
 			EntityPack* packPtr = nullptr;
-			if(this->has_known_storage())
+			if (this->has_known_storage())
 			{
 				EntityPack_of<EntityT>& pack = EntityPack_of<EntityT>::ref();
-				if(pack.destroy(static_cast<const EntityT&>(*this))) return;
+				if (pack.destroy(static_cast<const EntityT&>(*this))) return;
 				packPtr = &pack;
 			}
 			else
 			{
 				packPtr = EntityManager::ref().find_base_variant(MyComposition::storageID());
-				if(packPtr)
+				if (packPtr)
 				{
-					if(packPtr->destroy_around(reinterpret_cast<const char*>(this))) return;
+					if (packPtr->destroy_around(reinterpret_cast<const char*>(this))) return;
 				}
 				else
 				{
@@ -2220,22 +2619,72 @@ namespace dpl
 		}
 
 	private:	// [FUNCTIONS]
-		void					save(		BinaryState&	state) const
+		void					save(BinaryState& state) const
 		{
 			if constexpr (has_Base<EntityT>) Base_of<EntityT>::save(state);
 			static_cast<const EntityT&>(*this).save_state(state);
 		}
 
-		void					load(		BinaryState&	state)
+		void					load(BinaryState& state)
 		{
 			if constexpr (has_Base<EntityT>) Base_of<EntityT>::load(state);
 			static_cast<EntityT&>(*this).load_state(state);
-		}		
+		}
+	};
+}
+
+// storage implementation	(internal)
+namespace dpl
+{
+	// CRT Pattern
+	template<typename EntityT>
+	class	EntityStorageNode	: private Member<EntityStorageNode<Base_of<EntityT>>, EntityStorageNode<Base_of<EntityT>>>
+								, private Group<EntityStorageNode<EntityT>, EntityStorageNode<EntityT>>
+	{
+	private:	// [SUBTYPES]
+		using	MyMemberT	= Member<EntityStorageNode<Base_of<EntityT>>, EntityStorageNode<Base_of<EntityT>>>;
+		using	MyGroupT	= Group<EntityStorageNode<EntityT>, EntityStorageNode<EntityT>>;
+
+	public:		// [FRIENDS]
+		friend	MyMemberT;
+		friend	MyMemberT::MySequence;
+		friend	MyMemberT::MyLink;
+		friend	MyMemberT::MyGroup;
+		friend	MyMemberT::MyBase;
+		friend	MyGroupT;
+		
+		template<typename>
+		friend class EntityStorageNode;
+
+		template<typename>
+		friend class EntityPack_of;
+
+	private:	// [LIFECYCLE]
+		CLASS_CTOR		EntityStorageNode()
+		{
+			if constexpr (has_Base<EntityT>)
+			{
+				auto&	group = EntityPack_of<Base_of<EntityT>>::ref();
+						group.add_end_member(*this);
+			}
+		}
+
+	private:	// [FUNCTIONS]
+		template<typename BaseEntityT>
+		void			call_recursively_for(const std::function<void(EntityPackView<BaseEntityT>&)>& INVOKE)
+		{
+			INVOKE(EntityPackView<BaseEntityT>(static_cast<EntityPack_of<EntityT>&>(*this)));
+
+			MyGroupT::for_each([&](EntityStorageNode<EntityT>& node)
+			{
+				node.for_each<BaseEntityT>(INVOKE);
+			});
+		}
 	};
 
 
-	template<typename T>
-	using	MaybeComponentTable	= std::conditional_t<is_Composite<T>, ComponentTable<T, AllComponentTypes_of<T>>, std::monostate>;
+	template<typename EntityT>
+	using	MaybeComponentTable	= std::conditional_t<is_Composite<EntityT>, ComponentTable<EntityT, AllComponentTypes_of<EntityT>>, Monostate_t<EntityT, 2>>;
 
 
 	/*
@@ -2249,25 +2698,31 @@ namespace dpl
 	class	EntityPack_of	final	: public EntityPack
 									, public dpl::Singleton<EntityPack_of<EntityT>>
 									, public MaybeComponentTable<EntityT>
+									, public EntityStorageNode<EntityT>
 	{
 	private:	// [SUBTYPES]
 		using	MySingletonBase		= dpl::Singleton<EntityPack_of<EntityT>>;
 		using	MyComponentTable	= MaybeComponentTable<EntityT>;
+		using	MyNodeBase			= EntityStorageNode<EntityT>;
 
 	public:		// [SUBTYPES]
-		using	EntityIndex			= uint32_t;
-		using	NumEntities			= uint32_t;
-		using	Invoke				= std::function<void(EntityT&)>;
-		using	InvokeAll			= std::function<void(EntityT*, NumEntities)>;
-		using	InvokeConst			= std::function<void(const EntityT&)>;
-		using	InvokeAllConst		= std::function<void(const EntityT*, NumEntities)>;
-		using	InvokeIndexed		= std::function<void(EntityT&, EntityIndex)>;
-		using	InvokeIndexedConst	= std::function<void(const EntityT&, EntityIndex)>;
+		using	EntityIndex					= uint32_t;
+		using	NumEntities					= uint32_t;
+		using	InvokeEntity				= std::function<void(EntityT&)>;
+		using	InvokeEntityBuffer			= std::function<void(EntityT*, NumEntities)>;
+		using	InvokeConstEntity			= std::function<void(const EntityT&)>;
+		using	InvokeConstEntityBuffer		= std::function<void(const EntityT*, NumEntities)>;
+		using	InvokeIndexedEntity			= std::function<void(EntityT&, EntityIndex)>;
+		using	InvokeConstIndexedEntity	= std::function<void(const EntityT&, EntityIndex)>;
+		using	InvokeSimilarEntityBuffer	= std::function<void(EntityPackView<EntityT>&)>;
 
 	public:		// [FRIENDS]
 		friend	EntityManager;
 		friend  Entity<EntityT>;
 		friend	dpl::Variation<EntityManager, EntityPack>;
+
+		template<typename>
+		friend class EntityPack_of;
 
 	public:		// [DATA]
 		dpl::ReadOnly<uint32_t, EntityPack_of>	typeID;
@@ -2277,33 +2732,33 @@ namespace dpl
 		std::vector<EntityT>					m_entities;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR					EntityPack_of(						const Binding&					BINDING)
+		CLASS_CTOR					EntityPack_of(				const Binding&							BINDING)
 			: EntityPack(BINDING)
 			, MySingletonBase(static_cast<EntityManager*>(BINDING.owner())->owner())
 			, typeID(EntityPack::get_typeID<EntityPack_of<EntityT>>())
 		{
-
+			
 		}
 
 	public:		// [BASIC]
-		void						reserve_names(						const uint32_t					NUM_NAMES)
+		void						reserve_names(				const uint32_t							NUM_NAMES)
 		{
 			m_labeler.reserve(NUM_NAMES);
 		}
 
-		EntityT&					create(								const Name&						ENTITY_NAME)
+		EntityT&					create(						const Name&								ENTITY_NAME)
 		{
 			if constexpr (is_Composite<EntityT>) MyComponentTable::add_column();
 			return m_entities.emplace_back(Origin(ENTITY_NAME, typeID(), m_labeler));
 		}
 
-		EntityT&					create(								const Name::Type&				NAME_TYPE,
-																		const std::string&				NAME)
+		EntityT&					create(						const Name::Type&						NAME_TYPE,
+																const std::string&						NAME)
 		{
 			return create(Name(NAME_TYPE, NAME));
 		}
 
-		bool						destroy_at(							uint64_t						index)
+		bool						destroy_at(					uint64_t								index)
 		{
 			if(index >= m_entities.size()) return false;
 			std::invoke([&]<typename... ChildTs>(dpl::TypeList<ChildTs...> DUMMY)
@@ -2336,12 +2791,12 @@ namespace dpl
 			return true;
 		}
 
-		bool						destroy(							const EntityT&					ENTITY)
+		bool						destroy(					const EntityT&							ENTITY)
 		{
 			return destroy_at(dpl::get_element_index(m_entities, ENTITY));
 		}
 
-		bool						destroy(							const std::string&				NAME)
+		bool						destroy(					const std::string&						NAME)
 		{
 			const auto* ENTITY = find(NAME);
 			if(!ENTITY) return false;
@@ -2354,50 +2809,60 @@ namespace dpl
 			return (uint32_t)m_entities.size();
 		}
 
-		uint32_t					index_of(							const EntityT*					ENTITY) const
+		uint32_t					index_of(					const EntityT*							ENTITY) const
 		{
 			const uint64_t INDEX64 = dpl::get_element_index(m_entities, ENTITY);
 			return (INDEX64 > EntityPack::INVALID_INDEX) ? EntityPack::INVALID_INDEX : (uint32_t)INDEX64;
 		}
 
-		bool						contains(							const uint32_t					ENTITY_INDEX) const
+		bool						contains(					const uint32_t							ENTITY_INDEX) const
 		{
 			return ENTITY_INDEX < size();
 		}
 
-		bool						contains(							const EntityT*					ENTITY) const
+		bool						contains(					const EntityT*							ENTITY) const
 		{
 			return EntityPack_of::contains(index_of(ENTITY));
 		}
 
-		EntityT*					find(								const std::string&				ENTITY_NAME)
+		EntityT*					find(						const std::string&						ENTITY_NAME)
 		{
 			EntityT* entity = static_cast<EntityT*>(m_labeler.find_entry(ENTITY_NAME));
 			return EntityPack_of::contains(entity)? entity : nullptr;
 		}
 
-		const EntityT*				find(								const std::string&				ENTITY_NAME) const
+		const EntityT*				find(						const std::string&						ENTITY_NAME) const
 		{
 			const EntityT* ENTITY = static_cast<const EntityT*>(m_labeler.find_entry(ENTITY_NAME));
 			return EntityPack_of::contains(ENTITY)? ENTITY : nullptr;
 		}
 
-		EntityT&					get(								const std::string&				ENTITY_NAME)
+		EntityT*					find(						const uint32_t							ENTITY_INDEX)
+		{
+			return m_entities.data() + ENTITY_INDEX;
+		}
+			
+		const EntityT*				find(						const uint32_t							ENTITY_INDEX) const
+		{
+			return m_entities.data() + ENTITY_INDEX;
+		}
+
+		EntityT&					get(						const std::string&						ENTITY_NAME)
 		{
 			return *find(ENTITY_NAME);
 		}
 
-		const EntityT&				get(								const std::string&				ENTITY_NAME) const
+		const EntityT&				get(						const std::string&						ENTITY_NAME) const
 		{
 			return *find(ENTITY_NAME);
 		}
 
-		EntityT&					get(								const uint32_t					ENTITY_INDEX)
+		EntityT&					get(						const uint32_t							ENTITY_INDEX)
 		{
 			return m_entities[ENTITY_INDEX];
 		}
 
-		const EntityT&				get(								const uint32_t					ENTITY_INDEX) const
+		const EntityT&				get(						const uint32_t							ENTITY_INDEX) const
 		{
 			return m_entities[ENTITY_INDEX];
 		}
@@ -2412,7 +2877,7 @@ namespace dpl
 			return m_entities.back();
 		}
 
-		uint32_t					guess_ID_from_byte(					const char*						ENTITY_MEMBER_PTR) const
+		uint32_t					guess_ID_from_byte(			const char*								ENTITY_MEMBER_PTR) const
 		{
 			static const uint64_t	STRIDE			= sizeof(EntityT);
 			const char*				BEGIN			= reinterpret_cast<const char*>(m_entities.data());
@@ -2424,7 +2889,7 @@ namespace dpl
 			return (uint32_t)(BYTE_OFFSET / STRIDE);
 		}
 
-		bool						is_inherited_ID(					const uint32_t					TYPE_ID) const
+		bool						is_inherited_ID(			const uint32_t							TYPE_ID) const
 		{
 			if(typeID() == TYPE_ID) return true;
 			if constexpr (has_Base<EntityT>)
@@ -2436,27 +2901,27 @@ namespace dpl
 		}
 
 	public:		// [ITERATION]
-		void						for_each(							const Invoke&					INVOKE)
+		void						for_each(					const InvokeEntity&						INVOKE)
 		{
 			std::for_each(m_entities.begin(), m_entities.end(), INVOKE);
 		}
 
-		void						for_each(							const InvokeAll&				INVOKE)
+		void						for_each(					const InvokeEntityBuffer&				INVOKE)
 		{
 			INVOKE(m_entities.data(), size());
 		}
 
-		void						for_each(							const InvokeConst&				INVOKE) const
+		void						for_each(					const InvokeConstEntity&				INVOKE) const
 		{
 			std::for_each(m_entities.begin(), m_entities.end(), INVOKE);
 		}
 
-		void						for_each(							const InvokeAllConst&			INVOKE) const
+		void						for_each(					const InvokeConstEntityBuffer&			INVOKE) const
 		{
 			INVOKE(m_entities.data(), size());
 		}
 
-		void						for_each(							const InvokeIndexed&			INVOKE)
+		void						for_each(					const InvokeIndexedEntity&				INVOKE)
 		{
 			const uint32_t SIZE = size();
 			for(uint32_t index = 0; index < SIZE; ++index)
@@ -2465,18 +2930,23 @@ namespace dpl
 			}
 		}
 
-		void						for_each(							const InvokeIndexedConst&		INVOKE)
+		void						for_each(					const InvokeConstIndexedEntity&			INVOKE)
 		{
 			const uint32_t SIZE = size();
 			for(uint32_t index = 0; index < SIZE; ++index)
 			{
 				INVOKE(m_entities[index], index);
 			}
+		}
+
+		void						for_each(					const InvokeSimilarEntityBuffer&		INVOKE) final override
+		{
+			MyNodeBase::call_recursively_for<EntityT>(INVOKE);
 		}
 
 	public:		// [IO]
-		void						save_entity(						const Entity<EntityT>&			ENTITY,
-																		BinaryState&					state) const
+		void						save_entity(				const Entity<EntityT>&					ENTITY,
+																BinaryState&							state) const
 		{
 			if(!EntityPack_of::contains(static_cast<const EntityT*>(&ENTITY))) 
 				throw dpl::GeneralException(this, __LINE__, "Fail to save. Invalid entity: %s", ENTITY.name().c_str());
@@ -2486,16 +2956,16 @@ namespace dpl
 			ENTITY.save_all_relations(state);
 		}
 
-		const EntityT&				save_entity(						const std::string&				ENTITY_NAME,
-																		BinaryState&					state) const
+		const EntityT&				save_entity(				const std::string&						ENTITY_NAME,
+																BinaryState&							state) const
 		{
 			const EntityT& ENTITY = get(ENTITY_NAME);
 			EntityPack_of::save_entity(ENTITY, state);
 			return ENTITY;
 		}
 
-		void						load_entity(						Entity<EntityT>&				entity,
-																		BinaryState&					state)
+		void						load_entity(				Entity<EntityT>&						entity,
+																BinaryState&							state)
 		{
 			if(!EntityPack_of::contains(static_cast<EntityT*>(&entity)))
 				throw dpl::GeneralException(this, __LINE__, "Fail to load. Invalid entity: %s", entity.name().c_str());
@@ -2505,8 +2975,8 @@ namespace dpl
 			entity.load_all_relations(state);
 		}
 
-		EntityT&					load_entity(						const std::string&				ENTITY_NAME,
-																		BinaryState&					state)
+		EntityT&					load_entity(				const std::string&						ENTITY_NAME,
+																BinaryState&							state)
 		{
 			EntityT& entity = get(ENTITY_NAME);
 			EntityPack_of::load_entity(entity, state);
@@ -2520,27 +2990,27 @@ namespace dpl
 			return TYPE_NAME;
 		}
 
-		virtual const Identity*		find_identity(						const std::string&				ENTITY_NAME) const final override
+		virtual const Identity*		find_identity(				const std::string&						ENTITY_NAME) const final override
 		{
 			return find(ENTITY_NAME);
 		}
 
-		virtual const Identity*		find_and_verify_identity(			const std::string&				ENTITY_NAME,
-																		const uint32_t					TYPE_ID) const final override
+		virtual const Identity*		find_and_verify_identity(	const std::string&						ENTITY_NAME,
+																const uint32_t							TYPE_ID) const final override
 		{
 			if(!is_inherited_ID(TYPE_ID)) return nullptr;
 			return find(ENTITY_NAME);
 		}
 
-		virtual const Identity&		guess_identity_from_byte(			const char*						ENTITY_MEMBER_BYTE_PTR) const final override
+		virtual const Identity&		guess_identity_from_byte(	const char*								ENTITY_MEMBER_BYTE_PTR) const final override
 		{
 			const uint32_t ENTITY_ID = guess_ID_from_byte(ENTITY_MEMBER_BYTE_PTR);
 			return (ENTITY_ID != EntityPack::INVALID_ENTITY_ID)? get(ENTITY_ID) : EntityManager::ref().false_identity();
 		}
 
-		virtual void				for_each_dependent_child(			const std::string&				ENTITY_NAME,
-																		const Dependency				DEPENDENCY,
-																		const InvokeIdentity&			INVOKE) const final override
+		virtual void				for_each_dependent_child(	const std::string&						ENTITY_NAME,
+																const Dependency						DEPENDENCY,
+																const InvokeIdentity&					INVOKE) const final override
 		{
 			const EntityT& ENTITY = get(ENTITY_NAME);
 
@@ -2562,19 +3032,19 @@ namespace dpl
 		}
 
 	private:	// [IMPLEMENTATION]
-		virtual bool				destroy_around(						const char*						ENTITY_MEMBER_BYTE_PTR) final override
+		virtual bool				destroy_around(				const char*								ENTITY_MEMBER_BYTE_PTR) final override
 		{
 			const uint32_t ENTITY_ID = guess_ID_from_byte(ENTITY_MEMBER_BYTE_PTR);
 			return (ENTITY_ID != EntityPack::INVALID_ENTITY_ID)? destroy_at(ENTITY_ID) : false;
 		}
 
-		virtual char*				get_entity_as_bytes(				const std::string&				ENTITY_NAME) final override
+		virtual char*				get_entity_as_bytes(		const std::string&						ENTITY_NAME) final override
 		{
 			Entity<EntityT>* entity = find(ENTITY_NAME);
 			return entity? reinterpret_cast<char*>(entity) : nullptr;
 		}
 
-		virtual char*				get_base_entity_as_bytes(			const std::string&				ENTITY_NAME) final override
+		virtual char*				get_base_entity_as_bytes(	const std::string&						ENTITY_NAME) final override
 		{
 			RootBase_of<EntityT>* entity = find(ENTITY_NAME);
 			return entity? reinterpret_cast<char*>(entity) : nullptr;
@@ -2585,32 +3055,113 @@ namespace dpl
 			m_entities.resize(0);
 		}
 
-		virtual void				save_and_destroy(					const std::string&				ENTITY_NAME,
-																		BinaryState&					state) final override
+		virtual void				save_and_destroy(			const std::string&						ENTITY_NAME,
+																BinaryState&							state) final override
 		{
 			EntityPack_of::destroy(save_entity(ENTITY_NAME, state));
 		}
 
-		virtual void				create_and_load(					const std::string&				ENTITY_NAME,
-																		BinaryState&					state) final override
+		virtual void				create_and_load(			const std::string&						ENTITY_NAME,
+																BinaryState&							state) final override
 		{
 			EntityPack_of::load_entity(create(Name::UNIQUE, ENTITY_NAME), state);
 		}
 	};
+
+
+	template<typename EntityT>
+	class	EntityPackView
+	{
+	private:	// [SUBTYPES]
+		using	ComponentTypes	= AllComponentTypes_of<EntityT>;
+		using	ComponentArrays	= typename ComponentTypes::PtrPack;
+
+	public:		// [FRIENDS]
+		template<typename>
+		friend class EntityPack_of;
+
+	private:	// [DATA]
+		uint8_t*		rawEntityBuffer;
+		uint64_t		stride;
+		ComponentArrays componentArrays;
+		uint32_t		numEntities;
+
+	private:		// [LIFECYCLE]
+		template<typename DerivedEntityT>
+		CLASS_CTOR		EntityPackView(			EntityPack_of<DerivedEntityT>&	pack)
+			: rawEntityBuffer(reinterpret_cast<uint8_t*>(pack.find()) + dpl::base_offset<EntityT, DerivedEntityT>())
+			, stride(sizeof(DerivedEntityT))
+		{
+			if constexpr (ComponentTypes::SIZE > 0)
+			{
+				auto set_address = [&]<typename T>(T*& address)
+				{
+					address = pack.row<T>().modify();
+				};
+
+				std::invoke([&]<typename... ComponentTs>(std::tuple<ComponentTs*>& components)
+				{
+					(..., set_address(std::get<ComponentTs*>(components)));
+
+				}, componentArrays);
+			}
+		}
+
+	public:		// [FUNCTIONS]
+		EntityT&		entity_at(				const uint32_t					INDEX)
+		{
+			throw_if_invalid_index(INDEX);
+			return *reinterpret_cast<EntityT*>(rawEntityBuffer + get_offset(INDEX));
+		}
+
+		const EntityT&	entity_at(				const uint32_t					INDEX) const
+		{
+			throw_if_invalid_index(INDEX);
+			return *reinterpret_cast<const EntityT*>(rawEntityBuffer + get_offset(INDEX));
+		}
+
+		template<dpl::is_one_of<ComponentTypes> T>
+		T&				component_at(			const uint32_t					INDEX)
+		{
+			throw_if_invalid_index(INDEX);
+			return std::get<T*>(componentArrays)[INDEX];
+		}
+
+		template<dpl::is_one_of<ComponentTypes> T>
+		const T&		component_at(			const uint32_t					INDEX) const
+		{
+			throw_if_invalid_index(INDEX);
+			return std::get<T*>(componentArrays)[INDEX];
+		}
+
+	private:	// [FUNCTIONS]
+		uint64_t		get_offset(				const uint32_t					INDEX) const
+		{
+			return INDEX * stride;
+		}
+
+		void			throw_if_invalid_index(	const uint32_t					INDEX) const
+		{
+#ifdef _DEBUG
+			if(INDEX >= numEntities)
+				throw GeneralException(this, __LINE__, "Index out of range");
+#endif // _DEBUG
+		}
+	};
 }
 
-// user commands			<------------------------------ FOR THE USER
+// commands					(internal)
 namespace dpl
 {
 	template<typename T>
-	class	CommandGroupOf : public dpl::BinaryCommand
+	class	EntityManager::CommandGroupOf : public dpl::BinaryCommand
 	{
 	private:	// [DATA]
 		std::vector<T>	m_commands;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CommandGroupOf(		BinaryState&			state)
-			: BinaryCommand(state)
+		CLASS_CTOR		CommandGroupOf(		const Initializer&		INIT)
+			: BinaryCommand(INIT)
 		{
 
 		}
@@ -2646,7 +3197,7 @@ namespace dpl
 
 
 	template<typename ParentT, template<typename, typename> class RelationCommand>
-	class	MultiTypeCommand : public dpl::BinaryCommand
+	class	EntityManager::MultiTypeCommand : public dpl::BinaryCommand
 	{
 	private:	// [SUBTYPES]
 		template<is_Entity ChildT>
@@ -2661,9 +3212,9 @@ namespace dpl
 		template<	typename... CommandTs,
 					typename... Args>
 		CLASS_CTOR		MultiTypeCommand(	const dpl::TypeList<CommandTs...>	DUMMY,
-											BinaryState&						state,
+											const Initializer&					INIT,
 											std::tuple<Args&...>				args)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
 			, m_cmdTuple(std::piecewise_construct, (sizeof(CommandTs), args)...)
 		{
 
@@ -2671,9 +3222,9 @@ namespace dpl
 
 	public:		// [LIFECYCLE]
 		template<typename... CTOR>
-		CLASS_CTOR		MultiTypeCommand(	BinaryState&						state,
+		CLASS_CTOR		MultiTypeCommand(	const Initializer&					INIT,
 											CTOR&&...							args)
-			: MultiTypeCommand(AllCommandTypes(), state, std::tie(args...))
+			: MultiTypeCommand(AllCommandTypes(), INIT, std::tie(args...))
 		{
 
 		}
@@ -2707,27 +3258,27 @@ namespace dpl
 		bool m_initialized;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_Create(		BinaryState&			state,
+		CLASS_CTOR		CMD_Create(		const Initializer&		INIT,
 										const Name				NAME)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
 			, m_name(NAME)
 			, m_initialized(false)
 		{
 
 		}
 
-		CLASS_CTOR		CMD_Create(		BinaryState&			state,
+		CLASS_CTOR		CMD_Create(		const Initializer&		INIT,
 										const Name::Type		TYPE,
 										const std::string&		STR)
-			: CMD_Create(state, Name(TYPE, STR))
+			: CMD_Create(INIT, Name(TYPE, STR))
 		{
 
 		}
 
-		CLASS_CTOR		CMD_Create(		BinaryState&			state,
+		CLASS_CTOR		CMD_Create(		const Initializer&		INIT,
 										const Name::Type		TYPE,
 										const std::string_view	STR)
-			: CMD_Create(state, Name(TYPE, STR))
+			: CMD_Create(INIT, Name(TYPE, STR))
 		{
 
 		}
@@ -2760,21 +3311,21 @@ namespace dpl
 
 
 	template<is_Entity T>
-	class	EntityManager::CMD_CreateGroupOf : public CommandGroupOf<EntityManager::CMD_Create<T>>
+	class	EntityManager::CMD_CreateGroupOf : public EntityManager::CommandGroupOf<EntityManager::CMD_Create<T>>
 	{
 	public:		// [SUBTYPES]
 		using MyCommand		= EntityManager::CMD_Create<T>;
-		using MyCommands	= CommandGroupOf<MyCommand>;
+		using MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
 
 	private:	// [DATA]
 		std::string m_prefix;
 		uint32_t	m_size;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_CreateGroupOf(	BinaryState&			state,
-											const std::string&		GROUP_PREFIX,
-											const uint32_t			GROUP_SIZE)
-			: MyCommands(state)
+		CLASS_CTOR		CMD_CreateGroupOf(	const Initializer&	INIT,
+											const std::string&	GROUP_PREFIX,
+											const uint32_t		GROUP_SIZE)
+			: MyCommands(INIT)
 			, m_prefix(GROUP_PREFIX)
 			, m_size(GROUP_SIZE)
 		{
@@ -2786,7 +3337,7 @@ namespace dpl
 		}
 
 	private:	// [IMPLEMENTATION]
-		virtual void	on_first_execution(	BinaryState&			state) final override
+		virtual void	on_first_execution(	BinaryState&		state) final override
 		{
 			for(uint32_t index = 0; index < m_size; ++index)
 			{
@@ -2798,13 +3349,13 @@ namespace dpl
 
 	class	EntityManager::CMD_Destroy : public dpl::BinaryCommand
 	{
-	public:	// [DATA]
+	public:		// [DATA]
 		ReadOnly<Reference, CMD_Destroy> reference;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_Destroy(	BinaryState&		state,
+		CLASS_CTOR		CMD_Destroy(	const Initializer&	INIT,
 										const Identity&		IDENTITY)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
 			, reference(IDENTITY)
 		{
 			
@@ -2826,19 +3377,19 @@ namespace dpl
 
 
 	template<is_Entity ParentT, is_Entity ChildT>
-	class	EntityManager::CMD_DestroyChildrenIf : public CommandGroupOf<EntityManager::CMD_Destroy>
+	class	EntityManager::CMD_DestroyChildrenIf : public EntityManager::CommandGroupOf<EntityManager::CMD_Destroy>
 	{
 	public:		// [SUBTYPES]
 		using MyCommand		= EntityManager::CMD_Destroy;
-		using MyCommands	= CommandGroupOf<MyCommand>;
+		using MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
 
 	private:	// [DATA]
 		Reference m_ref;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_DestroyChildrenIf(	BinaryState&			state,
+		CLASS_CTOR		CMD_DestroyChildrenIf(	const Initializer&		INIT,
 												const Entity<ParentT>&	PARENT)
-			: MyCommands(state, PARENT.numChildren<ChildT>())
+			: MyCommands(INIT, PARENT.numChildren<ChildT>())
 			, m_ref(PARENT)
 		{
 			if(!PARENT.numChildren<ChildT>())
@@ -2860,15 +3411,15 @@ namespace dpl
 
 	
 	template<is_Entity ParentT>
-	class	EntityManager::CMD_DestroyAllChildrenOf : public MultiTypeCommand<ParentT, EntityManager::CMD_DestroyChildrenIf>
+	class	EntityManager::CMD_DestroyAllChildrenOf : public EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_DestroyChildrenIf>
 	{
 	private:	// [SUBTYPES]
-		using MyBase = MultiTypeCommand<ParentT, EntityManager::CMD_DestroyChildrenIf>;
+		using MyBase = EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_DestroyChildrenIf>;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_DestroyAllChildrenOf(	BinaryState&				state,
-													const Entity<ParentT>&		ENTITY)
-			: MyBase(state, ENTITY)
+		CLASS_CTOR		CMD_DestroyAllChildrenOf(	const Initializer&		INIT,
+													const Entity<ParentT>&	ENTITY)
+			: MyBase(INIT, ENTITY)
 		{
 			
 		}
@@ -2882,30 +3433,30 @@ namespace dpl
 		Name		m_newName;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_Rename(		BinaryState&			state,
+		CLASS_CTOR		CMD_Rename(		const Initializer&		INIT,
 										const Identity&			ENTITY,
 										const Name				NEW_NAME)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
 			, m_ref(ENTITY)
 			, m_newName(NEW_NAME)
 		{
 
 		}
 
-		CLASS_CTOR		CMD_Rename(		BinaryState&			state,
+		CLASS_CTOR		CMD_Rename(		const Initializer&		INIT,
 										const Identity&			ENTITY,
 										const Name::Type		TYPE,
 										const std::string&		STR)
-			: CMD_Rename(state, ENTITY, Name(TYPE, STR))
+			: CMD_Rename(INIT, ENTITY, Name(TYPE, STR))
 		{
 
 		}
 
-		CLASS_CTOR		CMD_Rename(		BinaryState&			state,
+		CLASS_CTOR		CMD_Rename(		const Initializer&		INIT,
 										const Identity&			ENTITY,
 										const Name::Type		TYPE,
 										const std::string_view	STR)
-			: CMD_Rename(state, ENTITY, Name(TYPE, STR))
+			: CMD_Rename(INIT, ENTITY, Name(TYPE, STR))
 		{
 
 		}
@@ -2940,23 +3491,27 @@ namespace dpl
 		Reference m_childRef;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_Adopt(		BinaryState&				state,
-										const Entity<ParentT>&		PARENT,
-										const Entity<ChildT>&		CHILD)
-			: BinaryCommand(state)
+		CLASS_CTOR		CMD_Adopt(		const Initializer&		INIT,
+										const Entity<ParentT>&	PARENT,
+										const Entity<ChildT>&	CHILD)
+			: BinaryCommand(INIT)
 			, m_parentRef(PARENT)
 			, m_childRef(CHILD)
 		{
-			if(!PARENT.can_have_another_child<ChildT>()) throw InvalidCommand("%s has maximum number of children.", PARENT.name().c_str());
+			if(!PARENT.can_have_another_child<ChildT>()) 
+				throw InvalidCommand("%s has maximum number of children.", PARENT.name().c_str());
+
+			if(CHILD.has_parent<ParentT>())
+				throw InvalidCommand("%s already has a parent. Child must first be orphaned.", CHILD.name().c_str());
 		}
 
 	private:	// [IMPLEMENTATION]
-		virtual void	on_execute(		BinaryState&				state) final override
+		virtual void	on_execute(		BinaryState&			state) final override
 		{
 			m_parentRef.get<ParentT>().add_child(m_childRef.get<ChildT>());
 		}
 
-		virtual void	on_unexecute(	BinaryState&				state) final override
+		virtual void	on_unexecute(	BinaryState&			state) final override
 		{
 			m_parentRef.get<ParentT>().remove_child(m_childRef.get<ChildT>());
 		}
@@ -2971,9 +3526,9 @@ namespace dpl
 		Reference m_childRef;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_Orphan(		BinaryState&				state,
-										const Entity<ChildT>&		CHILD)
-			: BinaryCommand(state)
+		CLASS_CTOR		CMD_Orphan(		const Initializer&		INIT,
+										const Entity<ChildT>&	CHILD)
+			: BinaryCommand(INIT)
 			, m_childRef(CHILD)
 		{
 			if(!CHILD.has_parent<ParentT>()) 
@@ -2983,12 +3538,12 @@ namespace dpl
 		}
 
 	private:	// [IMPLEMENTATION]
-		virtual void	on_execute(		BinaryState&				state) final override
+		virtual void	on_execute(		BinaryState&			state) final override
 		{
 			m_parentRef.get<ParentT>().remove_child(m_childRef.get<ChildT>());
 		}
 
-		virtual void	on_unexecute(	BinaryState&				state) final override
+		virtual void	on_unexecute(	BinaryState&			state) final override
 		{
 			m_parentRef.get<ParentT>().add_child(m_childRef.get<ChildT>());
 		}
@@ -2996,19 +3551,19 @@ namespace dpl
 
 
 	template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
-	class	EntityManager::CMD_OrphanChildrenIf : public CommandGroupOf<EntityManager::CMD_Orphan<ParentT, ChildT>>
+	class	EntityManager::CMD_OrphanChildrenIf : public EntityManager::CommandGroupOf<EntityManager::CMD_Orphan<ParentT, ChildT>>
 	{
 	public:		// [SUBTYPES]
 		using MyCommand		= EntityManager::CMD_Orphan<ParentT, ChildT>;
-		using MyCommands	= CommandGroupOf<MyCommand>;
+		using MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
 
 	private:	// [DATA]
 		Reference m_ref;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_OrphanChildrenIf(	BinaryState&			state,
+		CLASS_CTOR		CMD_OrphanChildrenIf(	const Initializer&		INIT,
 												const Entity<ParentT>&	PARENT)
-			: MyCommands(state)
+			: MyCommands(INIT)
 			, m_ref(PARENT)
 		{
 			if(!PARENT.numChildren<ChildT>())
@@ -3030,39 +3585,127 @@ namespace dpl
 
 
 	template<is_FinalEntity ParentT>
-	class	EntityManager::CMD_OrphanAllChildren : public MultiTypeCommand<ParentT, EntityManager::CMD_OrphanChildrenIf>
+	class	EntityManager::CMD_OrphanAllChildrenOf : public EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_OrphanChildrenIf>
 	{
 	private:	// [SUBTYPES]
-		using MyBase = MultiTypeCommand<ParentT, EntityManager::CMD_OrphanChildrenIf>;
+		using MyBase = EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_OrphanChildrenIf>;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		CMD_OrphanAllChildren(		BinaryState&				state,
-													const Entity<ParentT>&		ENTITY)
-			: MyBase(state, ENTITY)
+		CLASS_CTOR		CMD_OrphanAllChildrenOf(	const Initializer&		INIT,
+													const Entity<ParentT>&	ENTITY)
+			: MyBase(INIT, ENTITY)
 		{
 
 		}
 	};
 
 
-	class	EntityPack::DestroyHierarchy : public BinaryCommand
+	template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+	class	EntityManager::CMD_Involve : public dpl::BinaryCommand
 	{
 	private:	// [DATA]
-		EntityManager::CMD_Destroy			m_root;
-		CommandGroupOf<DestroyHierarchy>	m_branches;
+		Reference m_entityRef;
+		Reference m_partnerRef;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		DestroyHierarchy(	BinaryState&		state,
-											const Identity&		ROOT_IDENTITY)
-			: BinaryCommand(state)
-			, m_root(state, ROOT_IDENTITY)
-			, m_branches(state)
+		CLASS_CTOR		CMD_Involve(		const Initializer&		INIT,
+											const Entity<EntityT>&	ENTITY,
+											const Entity<PartnerT>&	PARTNER)
+			: BinaryCommand(INIT)
+			, m_entityRef(ENTITY)
+			, m_partnerRef(PARTNER)
+		{
+			CMD_Involve::validate_partner<PartnerT>(ENTITY);
+			CMD_Involve::validate_partner<EntityT>(PARTNER);
+		}
+
+	private:	// [IMPLEMENTATION]
+		template<typename OtherT, typename T>
+		void			validate_partner(	const Entity<T>&		ENTITY) const
+		{
+			if(ENTITY.has_partner<OtherT>()) 
+				throw InvalidCommand("%s is already involved with %s", ENTITY.name().c_str(), ENTITY.get_partner<OtherT>().name().c_str());
+		}
+
+		virtual void	on_execute(			BinaryState&			state) final override
+		{
+			m_entityRef.get<EntityT>().set_partner(m_partnerRef.get<PartnerT>());
+		}
+
+		virtual void	on_unexecute(		BinaryState&			state) final override
+		{
+			m_entityRef.get<EntityT>().remove_partner(m_partnerRef.get<PartnerT>());
+		}
+	};
+
+
+	template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+	class	EntityManager::CMD_Disinvolve : public dpl::BinaryCommand
+	{
+	private:	// [DATA]
+		Reference m_entityRef;
+		Reference m_partnerRef;
+
+	public:		// [LIFECYCLE]
+		CLASS_CTOR		CMD_Disinvolve(	const Initializer&		INIT,
+										const Entity<EntityT>&	ENTITY)
+			: BinaryCommand(INIT)
+			, m_entityRef(ENTITY)
+			, m_partnerRef(PARTNER)
+		{
+			if(ENTITY.has_partner<PartnerT>()) 
+				throw InvalidCommand("%s is already involved with %s", ENTITY.name().c_str(), ENTITY.get_partner<PartnerT>().name().c_str());
+
+			m_partnerRef.reset(&ENTITY.get_partner<PartnerT>());
+		}
+
+	private:	// [IMPLEMENTATION]
+		virtual void	on_execute(		BinaryState&			state) final override
+		{
+			m_entityRef.get<EntityT>().remove_partner(m_partnerRef.get<PartnerT>());
+		}
+
+		virtual void	on_unexecute(	BinaryState&			state) final override
+		{
+			m_entityRef.get<EntityT>().set_partner(m_partnerRef.get<PartnerT>());
+		}
+	};
+
+
+	template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+	class	EntityManager::CMD_DisinvolveAll : public EntityManager::MultiTypeCommand<EntityT, EntityManager::CMD_Disinvolve>
+	{
+	private:	// [SUBTYPES]
+		using MyBase = EntityManager::MultiTypeCommand<EntityT, EntityManager::CMD_Disinvolve>;
+
+	public:		// [LIFECYCLE]
+		CLASS_CTOR		CMD_DisinvolveAll(	const Initializer&		INIT,
+											const Entity<ParentT>&	ENTITY)
+			: MyBase(INIT, ENTITY)
+		{
+
+		}
+	};
+
+
+	class	EntityPack::CMD_DestroyHierarchy : public BinaryCommand
+	{
+	private:	// [DATA]
+		EntityManager::CMD_Destroy							m_root;
+		EntityManager::CommandGroupOf<CMD_DestroyHierarchy>	m_branches;
+
+	public:		// [LIFECYCLE]
+		CLASS_CTOR		CMD_DestroyHierarchy(	const Initializer&	INIT,
+												const Identity&		ROOT_ENTITY)
+			: BinaryCommand(INIT)
+			, m_root(INIT, ROOT_ENTITY)
+			, m_branches(INIT)
 		{
 			
 		}
 
 	private:	// [IMPLEMENTATION]
-		virtual void	on_first_execution(	BinaryState&		state) final override
+		virtual void	on_first_execution(		BinaryState&		state) final override
 		{
 			EntityPack& pack = EntityManager::ref().get_base_variant(m_root.reference().storageID());
 			pack.for_each_dependent_child(m_root.reference().name(), STRONG_DEPENDENCY, [&](const Identity& CHILD_IDENTITY)
@@ -3071,18 +3714,49 @@ namespace dpl
 			});
 		}
 
-		virtual void	on_execute(			BinaryState&		state) final override
+		virtual void	on_execute(				BinaryState&		state) final override
 		{
 			m_root.execute(state);
 			m_branches.execute(state);
 		}
 
-		virtual void	on_unexecute(		BinaryState&		state) final override
+		virtual void	on_unexecute(			BinaryState&		state) final override
 		{
 			m_branches.unexecute(state);
 			m_root.unexecute(state);
 		}
 	};
+
+
+	inline void	EntityManager::cmd_destroy_hierarchy(	const Identity&					ENTITY)
+	{
+		m_invoker.invoke<EntityPack::CMD_DestroyHierarchy>(ENTITY);
+	}
+
+	inline void	EntityManager::cmd_destroy(				const Identity&					ENTITY)
+	{
+		m_invoker.invoke<CMD_Destroy>(ENTITY);
+	}
+
+	inline void	EntityManager::cmd_rename(				const Identity&					ENTITY,
+														const Name						NEW_NAME)
+	{
+		m_invoker.invoke<CMD_Rename>(ENTITY, NEW_NAME);
+	}
+
+	inline void	EntityManager::cmd_rename(				const Identity&					ENTITY,
+														const Name::Type				TYPE,
+														const std::string&				STR)
+	{
+		m_invoker.invoke<CMD_Rename>(ENTITY, TYPE, STR);
+	}
+
+	inline void	EntityManager::cmd_rename(				const Identity&					ENTITY,
+														const Name::Type				TYPE,
+														const std::string_view			STR)
+	{
+		m_invoker.invoke<CMD_Rename>(ENTITY, TYPE, STR);
+	}
 }
 
 #pragma pack(pop)

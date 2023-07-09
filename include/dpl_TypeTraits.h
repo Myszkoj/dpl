@@ -146,9 +146,7 @@ namespace dpl
 	public:
 		using	type = TypeList<Ts...>;
 
-		/*
-			Stores ValueT for each type in the type list.
-		*/
+		// Stores ValueT for each type in the type list.
 		template<typename ValueT>
 		struct	UniformArray : public std::tuple<Uniform<Ts, ValueT>...>
 		{
@@ -421,6 +419,10 @@ namespace dpl
 // experimental
 namespace dpl
 {
+	template<typename T, uint32_t N = 0>
+	struct	Monostate_t{};
+
+
 	// WARNING: Fails with multiple inheritance .
 	template < template <typename...> class base,typename derived>
 	struct	is_base_of_template_impl

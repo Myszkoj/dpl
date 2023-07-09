@@ -154,18 +154,41 @@ namespace dpl
 // binary command implementation
 namespace dpl
 {
+	/*
+		NOTE: BinaryState can only be used within on_first_execution, on_execute and on_unexecute functions.
+	*/
 	class	BinaryCommand
 	{
 	public:		// [FRIENDS]
 		friend BinaryInvoker;
+
+	public:		// [SUBTYPES]
+
+		// TODO: This should be a pattern: "Confidential"
+		class Initializer
+		{
+		public:		// [FRIENDS]
+			friend BinaryCommand;
+			friend BinaryInvoker;
+
+		private:	// [DATA]
+			mutable BinaryState& state;
+
+		private:	// [LIFECYCLE]
+			CLASS_CTOR Initializer(BinaryState& state)
+				: state(state)
+			{
+
+			}
+		};
 
 	private:	// [DATA]
 		std::streamoff m_begin;
 		std::streamoff m_end;
 
 	public:	// [LIFECYCLE]
-		CLASS_CTOR		BinaryCommand(		BinaryState&			state)
-			: m_begin(state.tellp())
+		CLASS_CTOR		BinaryCommand(		const Initializer&		INIT)
+			: m_begin(INIT.state.tellp())
 			, m_end(-1)
 		{
 
@@ -265,7 +288,7 @@ namespace dpl
 
 	public:		// [FUNCTIONS]
 		template<is_Command T, typename... CTOR>
-		void				invoke(			CTOR&&...			args)
+		void				invoke(			CTOR&&...	args)
 		{
 			if(BinaryCommand* command = BinaryInvoker::create_command<T>(std::forward<CTOR>(args)...))
 			{
@@ -299,13 +322,13 @@ namespace dpl
 
 	private:	// [INTERNAL FUNCTIONS]
 		template<is_Command T, typename... CTOR>
-		BinaryCommand*		create_command(	CTOR&&...			args)
+		BinaryCommand*		create_command(	CTOR&&...	args)
 		{
 			BinaryCommand* newCommand = nullptr;
 			try
 			{
 				trim_to_current();
-				newCommand = m_commands.emplace_back(std::make_unique<T>(m_state, std::forward<CTOR>(args)...)).get();
+				newCommand = m_commands.emplace_back(new T(BinaryCommand::Initializer(m_state), std::forward<CTOR>(args)...)).get();
 				++m_currentID; // Note: If current is equal to INVALID_INDEX32 the value is winded back to the 0.
 			}
 			catch(InvalidCommand& e)
@@ -361,9 +384,9 @@ namespace tests
 		double m_value;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		AddCommand(		dpl::BinaryState&	state,
+		CLASS_CTOR		AddCommand(		const Initializer&	INIT,
 										const double		VALUE)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
 			, m_value(VALUE)
 		{
 
@@ -383,24 +406,28 @@ namespace tests
 
 	class DivideByCommand : public dpl::BinaryCommand
 	{
+	private:	// [DATA]
+		double m_value;
+
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		DivideByCommand(dpl::BinaryState&	state,
+		CLASS_CTOR		DivideByCommand(const Initializer&	INIT,
 										const double		VALUE)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
+			, m_value(VALUE)
 		{
-			if(VALUE == 0.0) throw dpl::InvalidCommand("Can't divide by 0!");
-			state.save(VALUE);
+			if(VALUE == 0.0) 
+				throw dpl::InvalidCommand("Can't divide by 0!");
 		}
 
 	private:	// [IMPLEMENTATION]
 		virtual void	on_execute(		dpl::BinaryState&	state) final override
 		{
-			GlobalCalculator::value() /= state.load<double>();
+			GlobalCalculator::value() /= m_value;
 		}
 
 		virtual void	on_unexecute(	dpl::BinaryState&	state) final override
 		{
-			GlobalCalculator::value() *= state.load<double>();
+			GlobalCalculator::value() *= m_value;
 		}
 	};
 
@@ -410,9 +437,9 @@ namespace tests
 		double m_value;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR		MultiplyByCommand(	dpl::BinaryState&	state,
+		CLASS_CTOR		MultiplyByCommand(	const Initializer&	INIT,
 											const double		VALUE)
-			: BinaryCommand(state)
+			: BinaryCommand(INIT)
 			, m_value(VALUE)
 		{
 
