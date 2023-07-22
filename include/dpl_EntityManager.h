@@ -23,7 +23,6 @@
 	- custom factory pattern for EntityManager and EntityPack
 	- parent-child relation should not be possible if parent type is derived from one of the types that are already on the child's list of parents
 	- parent-child relation should not be possible if child type is derived from one of the types that are already on the parent's list of children
-	- remove Related class, instead create inheritance: MaybeIdentified <- Child <- Partner <- Parent
 */
 
 
@@ -454,6 +453,10 @@ namespace dpl
 			else							labeler.label_with_postfix(*this, STR);
 		}
 	};
+
+
+	template<typename EntityT>
+	using	MaybeIdentified	= std::conditional_t<!has_Base<EntityT>, Identity, Base_of<EntityT>>;
 }
 
 // entity storage			<------------------------------ FOR THE USER
@@ -487,7 +490,7 @@ namespace dpl
 		}
 
 	public:		// [INTERFACE]
-		virtual const std::string&	entity_typeName() const = 0;
+		virtual const std::string&	get_entity_typeName() const = 0;
 
 		virtual const Identity*		find_identity(					const std::string&		ENTITY_NAME) const = 0;
 
@@ -552,47 +555,47 @@ namespace dpl
 	{
 	public:		// [COMMANDS]
 		template<typename T>
-		class CommandGroupOf;
+		class	CommandGroupOf;
 
-		template<typename ParentT, template<typename, typename> class RelationCommand>
-		class MultiTypeCommand;
-
-		template<is_Entity T>
-		class CMD_Create;
+		template<typename EntityT, dpl::is_TypeList RELATED_TYPES, template<typename, typename> class RelationCommand>
+		class	MultiTypeCommand;
 
 		template<is_Entity T>
-		class CMD_CreateGroupOf;
+		class	CMD_Create;
 
-		class CMD_Destroy;
+		template<is_Entity T>
+		class	CMD_CreateGroupOf;
+
+		class	CMD_Destroy;
 
 		template<is_Entity ParentT, is_Entity ChildT>
-		class CMD_DestroyChildrenIf;
+		class	CMD_DestroyChildrenIf;
 
 		template<is_Entity ParentT>
-		class CMD_DestroyAllChildrenOf;
+		class	CMD_DestroyAllChildrenOf;
 
-		class CMD_Rename;
-
-		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
-		class CMD_Adopt;
+		class	CMD_Rename;
 
 		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
-		class CMD_Orphan;
+		class	CMD_Adopt;
 
 		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
-		class CMD_OrphanChildrenIf;
+		class	CMD_Orphan;
+
+		template<is_Entity ParentT, one_of_child_types_of<ParentT> ChildT>
+		class	CMD_OrphanChildrenIf;
 
 		template<is_FinalEntity T>
-		class CMD_OrphanAllChildrenOf;
+		class	CMD_OrphanAllChildrenOf;
 
 		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
-		class CMD_Involve;
+		class	CMD_Involve;
 
 		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
-		class CMD_Disinvolve;
+		class	CMD_Disinvolve;
 
-		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
-		class CMD_DisinvolveAll;
+		template<is_Entity EntityT>
+		class	CMD_DisinvolveAll;
 
 	public:		// [SUBTYPES]
 		using	EntityIndex	= uint32_t;
@@ -721,6 +724,25 @@ namespace dpl
 		void					cmd_orphan_all_children_of(	const Entity<ParentT>&						PARENT)
 		{
 			m_invoker.invoke<CMD_OrphanAllChildrenOf<ParentT>>(PARENT);
+		}
+
+		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+		void					cmd_involve(				const Entity<EntityT>&						ENTITY,
+															const Entity<PartnerT>&						PARTNER)
+		{
+			m_invoker.invoke<CMD_Involve<EntityT, PartnerT>>(ENTITY, PARTNER);
+		}
+
+		template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
+		void					cmd_disinvolve(				const Entity<EntityT>&						ENTITY)
+		{
+			m_invoker.invoke<CMD_Disinvolve<EntityT, PartnerT>>(ENTITY);
+		}
+
+		template<is_Entity EntityT>
+		void					cmd_disinvolve_all(			const Entity<EntityT>&						ENTITY)
+		{
+			m_invoker.invoke<CMD_DisinvolveAll<EntityT>>(ENTITY);
 		}
 
 	public:		// [ITERATION]
@@ -914,20 +936,27 @@ namespace dpl
 	};
 }
 
-// parent-child declaration (internal)
+// relation declarations	(internal)
 namespace dpl
 {
 	template<typename ParentT, typename ChildT, RelationType TYPE>
-	class	ParentBase;
-
-	template<typename ParentT, typename ChildT, RelationType TYPE>
 	class	ChildBase;
 
-	template<typename ParentT, dpl::is_TypeList CHILD_TYPES>
-	class	Parent;
+	template<typename MeT, typename YouT>
+	class	PartnerBase;
+
+	template<typename ParentT, typename ChildT, RelationType TYPE>
+	class	ParentBase;
+
 
 	template<typename ChildT, dpl::is_TypeList PARENT_TYPES>
 	class	Child;
+
+	template<typename EntityT, dpl::is_TypeList PARTNER_TYPES>
+	class	Partner;
+
+	template<typename ParentT, dpl::is_TypeList CHILD_TYPES>
+	class	Parent;
 
 
 	// We use this offset internally to not block the inheritance from dpl::Sequenceable with default ID.
@@ -974,13 +1003,13 @@ namespace dpl
 	class	ChildBase<ParentT, ChildT, RelationType::ONE_TO_ONE> 
 		: private dpl::Association<ChildT, ParentT, dpl::get_relation_ID<ParentT, ChildT>()>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		static const uint32_t RELATION_ID	= dpl::get_relation_ID<ParentT, ChildT>();
 		using	ParentBaseT					= ParentBase<ParentT, ChildT, RelationType::ONE_TO_ONE>;
 		using	MyBaseT						= dpl::Association<ChildT, ParentT, RELATION_ID>;
 		using	MyLinkT						= dpl::Association<ParentT, ChildT, RELATION_ID>;
 
-	public: // friends
+	public:		// [FRIENDS]
 		friend	ParentBaseT;
 		friend	MyBaseT;
 		friend	MyLinkT;
@@ -991,16 +1020,16 @@ namespace dpl
 		template<typename, dpl::is_TypeList>
 		friend class	Child;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR			ChildBase() = default;
 		CLASS_CTOR			ChildBase(			ChildBase&&				other) noexcept = default;
 		ChildBase&			operator=(			ChildBase&&				other) noexcept = default;
 
-	private: // lifecycle (deleted)
+	private:	// [LIFECYCLE] (deleted)
 		CLASS_CTOR			ChildBase(			const ChildBase&		OTHER) = delete;
 		ChildBase&			operator=(			const ChildBase&		OTHER) = delete;
 
-	private: // functions
+	private:	// [FUNCTIONS]
 		bool				has_parent() const
 		{
 			return MyBaseT::is_linked();
@@ -1041,13 +1070,13 @@ namespace dpl
 	class	ChildBase<ParentT, ChildT, RelationType::ONE_TO_MANY> 
 		: private dpl::Member<ParentT, ChildT, dpl::get_relation_ID<ParentT, ChildT>()>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		static const uint32_t RELATION_ID	= dpl::get_relation_ID<ParentT, ChildT>();
 		using	ParentBaseT					= ParentBase<ParentT, ChildT, RelationType::ONE_TO_MANY>;
 		using	MyMemberT					= dpl::Member<ParentT, ChildT, RELATION_ID>;
 		using	MyGroupT					= dpl::Group<ParentT, ChildT, RELATION_ID>;
 
-	public: // friends
+	public:		// [FRIENDS]
 		friend	ParentBaseT;
 		friend	MyMemberT;
 		friend	MyMemberT::MySequence;
@@ -1062,16 +1091,16 @@ namespace dpl
 		template<typename, dpl::is_TypeList>
 		friend class	Child;
 
-	protected: // lifecycle
+	protected:	// [LIFECYCLE]
 		CLASS_CTOR			ChildBase() = default;
 		CLASS_CTOR			ChildBase(			ChildBase&&				other) noexcept = default;
 		ChildBase&			operator=(			ChildBase&&				other) noexcept = default;
 
-	private: // lifecycle (deleted)
+	private:	// [LIFECYCLE] (deleted)
 		CLASS_CTOR			ChildBase(			const ChildBase&		OTHER) = delete;
 		ChildBase&			operator=(			const ChildBase&		OTHER) = delete;
 
-	private: // functions
+	private:	// [FUNCTIONS]
 		bool				has_parent() const
 		{
 			return MyMemberT::is_member();
@@ -1109,27 +1138,32 @@ namespace dpl
 
 
 	template<typename ChildT, typename... ParentTn>
-	class	Child<ChildT, dpl::TypeList<ParentTn...>> : public ChildBase_t<ParentTn, ChildT>...
+	class	Child<ChildT, dpl::TypeList<ParentTn...>>	: public MaybeIdentified<ChildT>
+														, public ChildBase_t<ParentTn, ChildT>...
 	{
 	public:		// [FRIENDS]
 		friend	EntityManager;
 
+		template<typename, dpl::is_TypeList>
+		friend	class Partner;
+
 	private:	// [SUBTYPES]
 		using	PARENT_TYPES	= dpl::TypeList<ParentTn...>;
 
-		template<dpl::is_one_of<PARENT_TYPES> ParentT>
-		using	BaseT			= ChildBase_t<ParentT, ChildT>;
+		using	MyIdentity		= MaybeIdentified<ChildT>;
 
-	public:		// [LIFECYCLE]
-		CLASS_CTOR			Child() = default;
+		template<dpl::is_one_of<PARENT_TYPES> ParentT>
+		using	MyChildBase		= ChildBase_t<ParentT, ChildT>;
+
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR			Child(						const Origin&		ORIGIN)
+			: MyIdentity(ORIGIN)
+		{
+
+		}
+
 		CLASS_CTOR			Child(						Child&&				other) noexcept = default;
 		Child&				operator=(					Child&&				other) noexcept = default;
-
-		Child&				operator= (					dpl::Swap<Child>	other)
-		{
-			(BaseT<ParentTn>::operator=(dpl::Swap<BaseT<ParentTn>>(*other)), ...);
-			return *this;
-		}
 
 	private:	// [LIFECYCLE]
 		CLASS_CTOR			Child(						const Child&		OTHER) = delete;
@@ -1139,19 +1173,19 @@ namespace dpl
 		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
 		bool				has_parent() const
 		{
-			return BaseT<ParentT>::has_parent();
+			return MyChildBase<ParentT>::has_parent();
 		}
 
 		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
 		ParentT&			get_parent()
 		{
-			return BaseT<ParentT>::get_parent();
+			return MyChildBase<ParentT>::get_parent();
 		}
 
 		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
 		const ParentT&		get_parent() const
 		{
-			return BaseT<ParentT>::get_parent();
+			return MyChildBase<ParentT>::get_parent();
 		}
 
 		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
@@ -1165,20 +1199,288 @@ namespace dpl
 		template<dpl::is_same_as<ChildT>		T = ChildT>
 		void				save_parents_of_this(		BinaryState&		state) const
 		{
-			(BaseT<ParentTn>::save_parent(state), ...);
+			(MyChildBase<ParentTn>::save_parent(state), ...);
 		}
 
 		template<dpl::is_same_as<ChildT>		T = ChildT>
 		void				load_parents_of_this(		BinaryState&		state)
 		{
-			(BaseT<ParentTn>::load_parent(state), ...);
+			(MyChildBase<ParentTn>::load_parent(state), ...);
+		}
+
+	private:	// [FUNCTIONS]
+		void				save_relation_hierarchy(	BinaryState&		state) const
+		{
+			Child::save_parents_of_this(state);
+		}
+
+		void				load_relation_hierarchy(	BinaryState&		state)
+		{
+			Child::load_parents_of_this(state);
 		}
 	};
 
 
 	// Specialization for child without parents.
 	template<typename ChildT>
-	class	Child<ChildT, dpl::TypeList<>>{};
+	class	Child<ChildT, dpl::TypeList<>> : public MaybeIdentified<ChildT>
+	{
+	private:	// [SUBTYPES]
+		using	MyIdentity	= MaybeIdentified<ChildT>;
+
+	public:		// [FRIENDS]
+		template<typename, dpl::is_TypeList>
+		friend	class Partner;
+
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR			Child(						const Origin&		ORIGIN)
+			: MyIdentity(ORIGIN)
+		{
+
+		}
+
+		CLASS_CTOR			Child(						Child&&				other) noexcept = default;
+		Child&				operator=(					Child&&				other) noexcept = default;
+
+	private:	// [FUNCTIONS]
+		void				save_relation_hierarchy(	BinaryState&		state) const
+		{
+			// dummy function
+		}
+
+		void				load_relation_hierarchy(	BinaryState&		state)
+		{
+			// dummy function
+		}
+	};
+}
+
+// Partner interface		(internal)
+namespace dpl
+{
+	template<typename MeT, typename YouT>
+	constexpr uint32_t	get_partner_ID()
+	{
+		using PartnerTypeList = PartnerList_of<MeT>;
+		return dpl::RELATION_ID_OFFSET + ParentList_of<MeT>::SIZE + PartnerTypeList::template index_of<YouT>();
+	}
+
+
+	template<typename MeT, typename YouT>
+	class	PartnerBase : private dpl::Association<MeT, YouT, dpl::get_partner_ID<MeT, YouT>()>
+	{
+	private:	// [SUBTYPES]
+		static const uint32_t RELATION_ID	= dpl::get_partner_ID<MeT, YouT>();
+		using	MyPartnerT					= PartnerBase<YouT, MeT>;
+		using	MyBaseT						= dpl::Association<MeT, YouT, RELATION_ID>;
+		using	MyLinkT						= dpl::Association<YouT, MeT, RELATION_ID>;
+
+	public:		// [FRIENDS]
+		friend	MyPartnerT;
+		friend	MyBaseT;
+		friend	MyLinkT;
+
+		template<typename, dpl::is_TypeList>
+		friend class	Partner;
+
+	private:	// [LIFECYCLE]
+		CLASS_CTOR			PartnerBase() = default;
+		CLASS_CTOR			PartnerBase(					PartnerBase&&			other) noexcept = default;
+		PartnerBase&		operator=(						PartnerBase&&			other) noexcept = default;
+
+	private:	// [LIFECYCLE] (deleted)
+		CLASS_CTOR			PartnerBase(					const PartnerBase&		OTHER) = delete;
+		PartnerBase&		operator=(						const PartnerBase&		OTHER) = delete;
+
+	private:	// [FUNCTIONS]
+		bool				has_partner() const
+		{
+			return MyBaseT::is_linked();
+		}
+
+		bool				set_partner(					YouT&					partner)
+		{
+			return MyBaseT::link(partner);
+		}
+
+		bool				remove_partner()
+		{
+			return MyBaseT::unlink();
+		}
+
+		bool				remove_partner(					YouT&					partner)
+		{
+			if(MyBaseT::other() != &partner) return false;
+			return Partner::remove_partner();
+		}
+
+		YouT&				get_partner()
+		{
+			return *MyBaseT::other();
+		}
+
+		const YouT&			get_partner() const
+		{
+			return *MyBaseT::other();
+		}
+
+		void				save_partner(					BinaryState&			state) const
+		{
+			Reference::save_to_binary_opt(MyBaseT::other(), state);
+		}
+
+		void				load_partner(					BinaryState&			state)
+		{
+			MyBaseT::unlink();
+			const Reference REFERENCE(state);
+			if(MyPartnerT* child = REFERENCE.find<YouT>())
+			{
+				MyBaseT::link(*child);
+			}
+			else // log error
+			{
+				dpl::Logger::ref().push_error("Fail to import relation. The specified partner could not be found: " + REFERENCE.name());
+			}
+		}
+	};
+
+
+	template<typename EntityT, typename... PartnerTs>
+	class	Partner<EntityT, dpl::TypeList<PartnerTs...>>	: public Child<EntityT, ParentList_of<EntityT>>
+															, public PartnerBase<EntityT, PartnerTs>...
+	{
+	private:	// [SUBTYPES]
+		using	MyChildBase		= Child<EntityT, ParentList_of<EntityT>>;
+
+	public:		// [SUBTYPES]
+		using	PARTNER_TYPES	= dpl::TypeList<PartnerTs...>;
+
+	public:		// [FRIENDS]
+		friend	EntityManager;
+
+		template<typename, typename>
+		friend	class PartnerBase;
+
+		template<typename, dpl::is_TypeList>
+		friend	class Parent;
+
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR			Partner(					const Origin&		ORIGIN)
+			: MyChildBase(ORIGIN)
+		{
+
+		}
+
+		CLASS_CTOR			Partner(					Partner&&			other) noexcept = default;
+		Partner&			operator=(					Partner&&			other) noexcept = default;
+
+	private:	// [LIFECYCLE] (deleted)
+		CLASS_CTOR			Partner(					const Partner&		OTHER) = delete;
+		Partner&			operator=(					const Partner&		OTHER) = delete;
+
+	public:		// [FUNCTIONS]
+		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
+		bool				has_partner() const
+		{
+			return PartnerBase<EntityT, PartnerT>::has_partner();
+		}
+
+		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
+		PartnerT&			get_partner()
+		{
+			return PartnerBase<EntityT, PartnerT>::get_partner();
+		}
+
+		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
+		const PartnerT&		get_partner() const
+		{
+			return PartnerBase<EntityT, PartnerT>::get_partner();
+		}
+
+	protected:	// [FUNCTIONS]
+		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
+		bool				set_partner(				PartnerT&			partner)
+		{
+			return PartnerBase<EntityT, Base_in_list<PartnerT, PARTNER_TYPES>>::add_partner(partner);
+		}
+
+		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
+		bool				remove_partner(				PartnerT&			partner)
+		{
+			return PartnerBase<EntityT, Base_in_list<PartnerT, PARTNER_TYPES>>::remove_partner(partner);
+		}
+
+		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
+		bool				remove_partner()
+		{
+			return PartnerBase<EntityT, Base_in_list<PartnerT, PARTNER_TYPES>>::remove_partner();
+		}
+
+		template<dpl::is_same_as<EntityT>	This = EntityT>
+		void				remove_all_partners_of_this()
+		{
+			(PartnerBase<EntityT, PartnerTs>::remove_partner(), ...);
+		}
+
+		template<dpl::is_same_as<EntityT>	This = EntityT>
+		void				save_partners_of_this(		BinaryState&		state) const
+		{
+			(PartnerBase<EntityT, PartnerTs>::save_partner(state), ...);
+		}
+
+		template<dpl::is_same_as<EntityT>	This = EntityT>
+		void				load_partners_of_this(		BinaryState&		state)
+		{
+			(PartnerBase<EntityT, PartnerTs>::load_partner(state), ...);
+		}
+
+	private:	// [FUNCTIONS]
+		void				save_relation_hierarchy(	BinaryState&		state) const
+		{
+			MyChildBase::save_relation_hierarchy(state);
+			Partner::save_partners_of_this(state);
+		}
+
+		void				load_relation_hierarchy(	BinaryState&		state)
+		{
+			MyChildBase::load_relation_hierarchy(state);
+			Partner::load_partners_of_this(state);
+		}
+	};
+
+
+	// Specialization of entity without partners.
+	template<typename EntityT>
+	class	Partner<EntityT, dpl::TypeList<>> : public Child<EntityT, ParentList_of<EntityT>>
+	{
+	private:	// [SUBTYPES]
+		using	MyChildBase	= Child<EntityT, ParentList_of<EntityT>>;
+
+	public:		// [FRIENDS]
+		template<typename, dpl::is_TypeList>
+		friend	class Parent;
+
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR			Partner(					const Origin&		ORIGIN)
+			: MyChildBase(ORIGIN)
+		{
+
+		}
+
+		CLASS_CTOR			Partner(					Partner&&			other) noexcept = default;
+		Partner&			operator=(					Partner&&			other) noexcept = default;
+
+	private:	// [FUNCTIONS]
+		void				save_relation_hierarchy(	BinaryState&		state) const
+		{
+			MyChildBase::save_relation_hierarchy(state);
+		}
+
+		void				load_relation_hierarchy(	BinaryState&		state)
+		{
+			MyChildBase::load_relation_hierarchy(state);
+		}
+	};
 }
 
 // Parent interface			(internal)
@@ -1528,8 +1830,12 @@ namespace dpl
 
 
 	template<typename ParentT, typename... ChildTn>
-	class	Parent<ParentT, dpl::TypeList<ChildTn...>> : public ParentBase_t<ParentT, ChildTn>...
+	class	Parent<ParentT, dpl::TypeList<ChildTn...>>	: public Partner<ParentT, PartnerList_of<ParentT>>
+														, public ParentBase_t<ParentT, ChildTn>...
 	{
+	private:	// [SUBTYPES]
+		using	MyPartnerBase	= Partner<ParentT, PartnerList_of<ParentT>>;
+
 	public:		// [SUBTYPES]
 		using	CHILD_TYPES		= dpl::TypeList<ChildTn...>;
 
@@ -1543,13 +1849,19 @@ namespace dpl
 		using	ParentBase_of	= ParentBase_t<ParentT, ChildT>;
 
 	public:		// [FRIENDS]
-		friend EntityManager;
+		friend	EntityManager;
+		friend	EntityPack_of<ParentT>;
 
 		template<typename, typename, RelationType>
 		friend	class ChildBase;
 
 	protected:	// [LIFECYCLE]
-		CLASS_CTOR				Parent() = default;
+		CLASS_CTOR				Parent(						const Origin&				ORIGIN)
+			: MyPartnerBase(ORIGIN)
+		{
+
+		}
+
 		CLASS_CTOR				Parent(						Parent&&					other) noexcept = default;
 		Parent&					operator=(					Parent&&					other) noexcept = default;
 
@@ -1649,18 +1961,6 @@ namespace dpl
 		}
 
 	protected:	// [FUNCTIONS]
-		template<dpl::is_same_as<ParentT>		This = ParentT>
-		void					save_children_of_this(		BinaryState&				state) const
-		{
-			(ParentBase_of<ChildTn>::save_children(state), ...);
-		}
-
-		template<dpl::is_same_as<ParentT>		This = ParentT>
-		void					load_children_of_this(		BinaryState&				state)
-		{
-			(ParentBase_of<ChildTn>::load_children(state), ...);
-		}
-
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
 		bool					add_child(					ChildT&						child)
 		{
@@ -1690,505 +1990,66 @@ namespace dpl
 		{
 			ParentBase_of<ChildT>::destroy_all_children();
 		}
+
+		template<dpl::is_same_as<ParentT>		This = ParentT>
+		void					save_children_of_this(		BinaryState&				state) const
+		{
+			(ParentBase_of<ChildTn>::save_children(state), ...);
+		}
+
+		template<dpl::is_same_as<ParentT>		This = ParentT>
+		void					load_children_of_this(		BinaryState&				state)
+		{
+			(ParentBase_of<ChildTn>::load_children(state), ...);
+		}
+
+	private:	// [FUNCTIONS]
+		void					save_relation_hierarchy(	BinaryState&				state) const
+		{
+			MyPartnerBase::save_relation_hierarchy(state);
+			Parent::save_children_of_this(state);
+		}
+
+		void					load_relation_hierarchy(	BinaryState&				state)
+		{
+			MyPartnerBase::load_relation_hierarchy(state);
+			Parent::load_children_of_this(state);
+		}
 	};
 
 
 	// Specialization of parent without children.
 	template<typename ParentT>
-	class	Parent<ParentT, dpl::TypeList<>>{};
-}
-
-// Partner interface		(internal)
-namespace dpl
-{
-	template<typename MeT, typename YouT>
-	constexpr uint32_t	get_partner_ID()
+	class	Parent<ParentT, dpl::TypeList<>> : public Partner<ParentT, PartnerList_of<ParentT>>
 	{
-		using PartnerTypeList = PartnerList_of<MeT>;
-		return dpl::RELATION_ID_OFFSET + ParentList_of<MeT>::SIZE + PartnerTypeList::template index_of<ParentT>();
-	}
-
-
-	template<typename MeT, dpl::is_TypeList PARTNER_TYPES>
-	class	Partner;
-
-
-	template<typename MeT, typename YouT>
-	class	PartnerBase : private dpl::Association<MeT, YouT, dpl::get_partner_ID<MeT, YouT>()>
-	{
-	private: // subtypes
-		static const uint32_t RELATION_ID	= dpl::get_partner_ID<MeT, YouT>();
-		using	MyPartnerT					= PartnerBase<YouT, MeT>;
-		using	MyBaseT						= dpl::Association<MeT, YouT, RELATION_ID>;
-		using	MyLinkT						= dpl::Association<YouT, MeT, RELATION_ID>;
-
-	public: // friends
-		friend	MyPartnerT;
-		friend	MyBaseT;
-		friend	MyLinkT;
-
-		template<typename, dpl::is_TypeList>
-		friend class	Partner;
-
-	private: // lifecycle
-		CLASS_CTOR			PartnerBase() = default;
-		CLASS_CTOR			PartnerBase(					PartnerBase&&			other) noexcept = default;
-		PartnerBase&		operator=(						PartnerBase&&			other) noexcept = default;
-
-	private: // lifecycle (deleted)
-		CLASS_CTOR			PartnerBase(					const PartnerBase&		OTHER) = delete;
-		PartnerBase&		operator=(						const PartnerBase&		OTHER) = delete;
-
-	private: // functions
-		bool				has_partner() const
-		{
-			return MyBaseT::is_linked();
-		}
-
-		bool				set_partner(					YouT&					partner)
-		{
-			return MyBaseT::link(partner);
-		}
-
-		bool				remove_partner()
-		{
-			return MyBaseT::unlink();
-		}
-
-		bool				remove_partner(					YouT&					partner)
-		{
-			if(MyBaseT::other() != &partner) return false;
-			return Partner::remove_partner();
-		}
-
-		YouT&				get_partner()
-		{
-			return *MyBaseT::other();
-		}
-
-		const YouT&			get_partner() const
-		{
-			return *MyBaseT::other();
-		}
-
-		void				save_partner(					BinaryState&			state) const
-		{
-			Reference::save_to_binary_opt(MyBaseT::other(), state);
-		}
-
-		void				load_partner(					BinaryState&			state)
-		{
-			MyBaseT::unlink();
-			const Reference REFERENCE(state);
-			if(MyPartnerT* child = REFERENCE.find<YouT>())
-			{
-				MyBaseT::link(*child);
-			}
-			else // log error
-			{
-				dpl::Logger::ref().push_error("Fail to import relation. The specified partner could not be found: " + REFERENCE.name());
-			}
-		}
-	};
-
-
-	template<typename MeT, typename... PartnerTs>
-	class	Partner<MeT, dpl::TypeList<PartnerTs...>> : public PartnerBase<MeT, PartnerTs>...
-	{
-	public:		// [SUBTYPES]
-		using	PARTNER_TYPES	= dpl::TypeList<PartnerTs...>;
+	private:	// [SUBTYPES]
+		using	MyPartnerBase	= Partner<ParentT, PartnerList_of<ParentT>>;
 
 	public:		// [FRIENDS]
 		friend	EntityManager;
-
-		template<typename, typename>
-		friend	class PartnerBase;
+		friend	EntityPack_of<ParentT>;
 
 	protected:	// [LIFECYCLE]
-		CLASS_CTOR				Partner() = default;
-		CLASS_CTOR				Partner(					Partner&&			other) noexcept = default;
-		Partner&				operator=(					Partner&&			other) noexcept = default;
-
-	private:	// [LIFECYCLE] (deleted)
-		CLASS_CTOR				Partner(					const Partner&		OTHER) = delete;
-		Partner&				operator=(					const Partner&		OTHER) = delete;
-
-	public:		// [FUNCTIONS]
-		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
-		bool					has_partner() const
+		CLASS_CTOR				Parent(						const Origin&				ORIGIN)
+			: MyPartnerBase(ORIGIN)
 		{
-			return PartnerBase<MeT, PartnerT>::has_partner();
+
 		}
 
-		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
-		PartnerT&				get_partner()
+		CLASS_CTOR				Parent(						Parent&&					other) noexcept = default;
+		Parent&					operator=(					Parent&&					other) noexcept = default;
+
+	private:	// [FUNCTIONS]
+		void					save_relation_hierarchy(	BinaryState&				state) const
 		{
-			return PartnerBase<MeT, PartnerT>::get_partner();
+			MyPartnerBase::save_relation_hierarchy(state);
 		}
 
-		template<dpl::is_one_of<PARTNER_TYPES> PartnerT>
-		const PartnerT&			get_partner() const
+		void					load_relation_hierarchy(	BinaryState&				state)
 		{
-			return PartnerBase<MeT, PartnerT>::get_partner();
-		}
-
-	protected:	// [FUNCTIONS]
-		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
-		bool					set_partner(				PartnerT&			partner)
-		{
-			return PartnerBase<MeT, Base_in_list<PartnerT, PARTNER_TYPES>>::add_partner(partner);
-		}
-
-		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
-		bool					remove_partner(				PartnerT&			partner)
-		{
-			return PartnerBase<MeT, Base_in_list<PartnerT, PARTNER_TYPES>>::remove_partner(partner);
-		}
-
-		template<is_one_of_base_types<PARTNER_TYPES>	PartnerT>
-		bool					remove_partner()
-		{
-			return PartnerBase<MeT, Base_in_list<PartnerT, PARTNER_TYPES>>::remove_partner();
-		}
-
-		template<dpl::is_same_as<MeT>		This = MeT>
-		void					remove_all_partners_of_this()
-		{
-			(PartnerBase<MeT, PartnerTs>::remove_partner(), ...);
-		}
-
-		template<dpl::is_same_as<MeT>		This = MeT>
-		void					save_partners_of_this(		BinaryState&		state) const
-		{
-			(PartnerBase<MeT, PartnerTs>::save_partner(state), ...);
-		}
-
-		template<dpl::is_same_as<MeT>		This = MeT>
-		void					load_children_of_this(		BinaryState&		state)
-		{
-			(PartnerBase<MeT, PartnerTs>::load_partner(state), ...);
+			MyPartnerBase::load_relation_hierarchy(state);
 		}
 	};
-
-
-	// Specialization of parent without children.
-	template<typename ParentT>
-	class	Parent<ParentT, dpl::TypeList<>>{};
-}
-
-// Related 					(internal, Parent/Child wrapper)
-namespace dpl
-{
-	template<typename EntityT>
-	using	MaybeIdentified			= std::conditional_t<!has_Base<EntityT>, Identity, Base_of<EntityT>>;
-
-
-	template<typename EntityT>
-	concept has_OwnParentList		= ParentList_of<EntityT>::SIZE > 0;
-
-	template<typename EntityT>
-	concept has_OwnChildList		= ChildList_of<EntityT>::SIZE > 0;
-
-
-	template<typename EntityT>
-	concept needs_ChildOverloading	= has_OwnParentList<EntityT> && (InheritedParentTypes_of<EntityT>::SIZE > 0);
-
-	template<typename EntityT>
-	concept needs_ParentOverloading = has_OwnChildList<EntityT> && (InheritedChildTypes_of<EntityT>::SIZE > 0);
-
-
-	template<typename EntityT, bool NEEDS_CHILD_OVERLOADING, bool NEEDS_PARENT_OVERLOADING>
-	class	Related;
-
-
-	template<typename EntityT>
-	class	Related<EntityT, false, false>	: public	MaybeIdentified<EntityT>
-											, public	Child<EntityT, ParentList_of<EntityT>>
-											, public	Parent<EntityT, ChildList_of<EntityT>>
-	{
-	private:	// [SUBTYPES]
-		using	MyIdentity		= MaybeIdentified<EntityT>;
-		using	MyChildBase		= Child<EntityT, ParentList_of<EntityT>>;
-		using	MyParentBase	= Parent<EntityT, ChildList_of<EntityT>>;
-
-	public:		// [FRIENDS]
-		template<typename, typename, RelationType>
-		friend class	ChildBase;
-
-		template<typename, typename, RelationType>
-		friend class	ParentBase;
-
-		template<typename>
-		friend class	Entity;
-
-		template<typename>
-		friend class	EntityPack_of;
-
-	public:		// [INHERITED]
-		using	MyIdentity::MyIdentity;
-		using	MyIdentity::name;
-		using	MyIdentity::storageID;
-
-	public:		// [LIFECYCLE]
-		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
-		Related&			operator=(				Related&&			other) noexcept = default;
-
-	private:	// [LIFECYCLE] (deleted)
-		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
-		Related&			operator=(				const Related&		OTHER) = delete;
-
-	protected:	// [FUNCTIONS]
-		void				save_all_relations(		BinaryState&		state) const
-		{
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(state);
-		}
-
-		void				load_all_relations(		BinaryState&		state)
-		{
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(state);
-		}
-	};
-
-
-	template<typename EntityT>
-	class	Related<EntityT, true, true>	: public	MaybeIdentified<EntityT>
-											, public	Child<EntityT, ParentList_of<EntityT>>
-											, public	Parent<EntityT, ChildList_of<EntityT>>
-	{
-	private:	// [SUBTYPES]
-		using	MyIdentity		= MaybeIdentified<EntityT>;
-		using	MyChildBase		= Child<EntityT, ParentList_of<EntityT>>;
-		using	MyParentBase	= Parent<EntityT, ChildList_of<EntityT>>;
-
-	public:		// [FRIENDS]
-		template<typename, typename, RelationType>
-		friend class	ChildBase;
-
-		template<typename, typename, RelationType>
-		friend class	ParentBase;
-
-		template<typename>
-		friend class	Entity;
-
-		template<typename>
-		friend class	EntityPack_of;
-
-	public:		// [INHERITED]
-		using	MyIdentity::MyIdentity;
-		using	MyIdentity::name;
-		using	MyIdentity::storageID;
-		using	MyIdentity::has_child;
-		using	MyIdentity::can_have_another_child;
-		using	MyIdentity::numChildren;
-		using	MyIdentity::add_child;
-		using	MyIdentity::remove_child;
-		using	MyIdentity::remove_children_of_type;
-		using	MyIdentity::destroy_children_of_type;
-		using	MyIdentity::get_child;
-		using	MyIdentity::first_child;
-		using	MyIdentity::last_child;
-		using	MyIdentity::previous_child;
-		using	MyIdentity::next_child;
-		using	MyIdentity::for_each_child;
-		using	MyIdentity::save_children_of_this;
-		using	MyIdentity::load_children_of_this;
-		using	MyParentBase::has_child;
-		using	MyParentBase::can_have_another_child;
-		using	MyParentBase::numChildren;
-		using	MyParentBase::add_child;
-		using	MyParentBase::remove_child;
-		using	MyParentBase::remove_children_of_type;
-		using	MyParentBase::destroy_children_of_type;
-		using	MyParentBase::get_child;
-		using	MyParentBase::first_child;
-		using	MyParentBase::last_child;
-		using	MyParentBase::previous_child;
-		using	MyParentBase::next_child;
-		using	MyParentBase::for_each_child;
-		using	MyParentBase::save_children_of_this;
-		using	MyParentBase::load_children_of_this;
-		using	MyIdentity::has_parent;
-		using	MyIdentity::get_parent;
-		using	MyIdentity::save_parents_of_this;
-		using	MyIdentity::load_parents_of_this;
-		using	MyChildBase::has_parent;
-		using	MyChildBase::get_parent;
-		using	MyChildBase::save_parents_of_this;
-		using	MyChildBase::load_parents_of_this;
-
-	public:		// [LIFECYCLE]
-		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
-		Related&			operator=(				Related&&			other) noexcept = default;
-
-	private:	// [LIFECYLCE]
-		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
-		Related&			operator=(				const Related&		OTHER) = delete;
-
-	protected:	// [FUNCTIONS]
-		void				save_all_relations(		BinaryState&		state) const
-		{
-			MyIdentity::save_all_relations(state);
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(state);
-		}
-
-		void				load_all_relations(		BinaryState&		state)
-		{
-			MyIdentity::load_all_relations(state);
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(state);
-		}
-	};
-
-
-	template<typename EntityT>
-	class	Related<EntityT, true, false>	: public	MaybeIdentified<EntityT>
-											, public	Child<EntityT, ParentList_of<EntityT>>
-											, public	Parent<EntityT, ChildList_of<EntityT>>
-	{
-	private:	// [SUBTYPES]
-		using	MyIdentity		= MaybeIdentified<EntityT>;
-		using	MyChildBase		= Child<EntityT, ParentList_of<EntityT>>;
-		using	MyParentBase	= Parent<EntityT, ChildList_of<EntityT>>;
-
-	public:		// [FRIENDS]
-		template<typename, typename, RelationType>
-		friend class	ChildBase;
-
-		template<typename, typename, RelationType>
-		friend class	ParentBase;
-
-		template<typename>
-		friend class	Entity;
-
-		template<typename>
-		friend class	EntityPack_of;
-
-	public:		// [INHERITED]
-		using	MyIdentity::MyIdentity;
-		using	MyIdentity::name;
-		using	MyIdentity::storageID;
-		using	MyIdentity::has_parent;
-		using	MyIdentity::get_parent;
-		using	MyIdentity::save_parents_of_this;
-		using	MyIdentity::load_parents_of_this;
-		using	MyChildBase::has_parent;
-		using	MyChildBase::get_parent;
-		using	MyChildBase::save_parents_of_this;
-		using	MyChildBase::load_parents_of_this;
-
-	public:		// [LIFECYCLE]
-		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
-		Related&			operator=(				Related&&			other) noexcept = default;
-
-	private:	// [LIFECYCLE]
-		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
-		Related&			operator=(				const Related&		OTHER) = delete;
-
-	protected:	// [FUNCTIONS]
-		void				save_all_relations(		BinaryState&		state) const
-		{
-			MyIdentity::save_all_relations(state);
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(state);
-		}
-
-		void				load_all_relations(		BinaryState&		state)
-		{
-			MyIdentity::load_all_relations(state);
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(state);
-		}
-	};
-
-
-	template<typename EntityT>
-	class	Related<EntityT, false, true>	: public	MaybeIdentified<EntityT>
-											, public	Child<EntityT, ParentList_of<EntityT>>
-											, public	Parent<EntityT, ChildList_of<EntityT>>
-	{
-	private:	// [SUBTYPES]
-		using	MyIdentity		= MaybeIdentified<EntityT>;
-		using	MyChildBase		= Child<EntityT, ParentList_of<EntityT>>;
-		using	MyParentBase	= Parent<EntityT, ChildList_of<EntityT>>;
-
-	public:		// [FRIENDS]
-		template<typename, typename, RelationType>
-		friend class	ChildBase;
-
-		template<typename, typename, RelationType>
-		friend class	ParentBase;
-
-		template<typename>
-		friend class	Entity;
-
-		template<typename>
-		friend class	EntityPack_of;
-
-	public:		// [INHERITED]
-		using	MyIdentity::MyIdentity;
-		using	MyIdentity::name;
-		using	MyIdentity::storageID;
-		using	MyIdentity::has_child;
-		using	MyIdentity::can_have_another_child;
-		using	MyIdentity::numChildren;
-		using	MyIdentity::add_child;
-		using	MyIdentity::remove_child;
-		using	MyIdentity::remove_children_of_type;
-		using	MyIdentity::destroy_children_of_type;
-		using	MyIdentity::get_child;
-		using	MyIdentity::first_child;
-		using	MyIdentity::last_child;
-		using	MyIdentity::previous_child;
-		using	MyIdentity::next_child;
-		using	MyIdentity::for_each_child;
-		using	MyIdentity::save_children_of_this;
-		using	MyIdentity::load_children_of_this;
-		using	MyParentBase::has_child;
-		using	MyParentBase::can_have_another_child;
-		using	MyParentBase::numChildren;
-		using	MyParentBase::add_child;
-		using	MyParentBase::remove_child;
-		using	MyParentBase::remove_children_of_type;
-		using	MyParentBase::destroy_children_of_type;
-		using	MyParentBase::get_child;
-		using	MyParentBase::first_child;
-		using	MyParentBase::last_child;
-		using	MyParentBase::previous_child;
-		using	MyParentBase::next_child;
-		using	MyParentBase::for_each_child;
-		using	MyParentBase::save_children_of_this;
-		using	MyParentBase::load_children_of_this;
-
-	public:		// [LIFECYCLE]
-		CLASS_CTOR			Related(				Related&&			other) noexcept = default;
-		Related&			operator=(				Related&&			other) noexcept = default;
-
-	private:	// [LIFECYCLE]
-		CLASS_CTOR			Related(				const Related&		OTHER) = delete;
-		Related&			operator=(				const Related&		OTHER) = delete;
-
-	protected:	// [FUNCTIONS]
-		void				save_all_relations(		BinaryState&		state) const
-		{
-			MyIdentity::save_all_relations(state);
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template save_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template save_children_of_this<EntityT>(state);
-		}
-
-		void				load_all_relations(		BinaryState&		state)
-		{
-			MyIdentity::load_all_relations(state);
-			if constexpr (has_OwnParentList<EntityT>)	MyChildBase::template load_parents_of_this<EntityT>(state);
-			if constexpr (has_OwnChildList<EntityT>)	MyParentBase::template load_children_of_this<EntityT>(state);
-		}
-	};
-
-
-	template<typename EntityT>
-	using	MaybeRelated = Related<EntityT, needs_ChildOverloading<EntityT>, needs_ParentOverloading<EntityT>>;
 }
 
 // component storage		(internal)
@@ -2394,13 +2255,13 @@ namespace dpl
 
 
 	template<typename EntityT>
-	class	MaybeComposite<EntityT, dpl::TypeList<>> : public MaybeRelated<EntityT>
+	class	MaybeComposite<EntityT, dpl::TypeList<>> : public Parent<EntityT, ChildList_of<EntityT>>
 	{
 	public: // subtypes
-		using	MyRelation	= MaybeRelated<EntityT>;
+		using	MyRelations	= Parent<EntityT, ChildList_of<EntityT>>;
 
 	protected: // inherited members
-		using	MyRelation::MyRelation;
+		using	MyRelations::MyRelations;
 
 	protected: // lifecycle
 		CLASS_CTOR		MaybeComposite(	const MaybeComposite&	OTHER) = delete;
@@ -2411,10 +2272,10 @@ namespace dpl
 
 
 	template<typename EntityT, is_Component... Ts>
-	class	MaybeComposite<EntityT, dpl::TypeList<Ts...>> : public MaybeRelated<EntityT>
+	class	MaybeComposite<EntityT, dpl::TypeList<Ts...>> : public Parent<EntityT, ChildList_of<EntityT>>
 	{
 	public: // subtypes
-		using	MyRelation			= MaybeRelated<EntityT>;
+		using	MyRelations			= Parent<EntityT, ChildList_of<EntityT>>;
 
 	public: // subtypes
 		using	COMPONENT_TYPES		= AllComponentTypes_of<EntityT>;
@@ -2424,7 +2285,7 @@ namespace dpl
 		using	MyPack				= EntityPack_of<EntityT>;
 
 	protected: // inherited members
-		using	MyRelation::MyRelation;
+		using	MyRelations::MyRelations;
 
 	protected: // lifecycle
 		CLASS_CTOR		MaybeComposite(					const MaybeComposite&	OTHER) = delete;
@@ -2486,7 +2347,7 @@ namespace dpl
 	private: // functions
 		const uint32_t	get_index(						const MyPack&			PACK) const
 		{
-			if(PACK.typeID() != MyRelation::storageID()) throw dpl::GeneralException(this, __LINE__, "Components must be retrieved through final entity class.");
+			if(PACK.typeID() != MyRelations::storageID()) throw dpl::GeneralException(this, __LINE__, "Components must be retrieved through final entity class.");
 			return PACK.index_of(static_cast<const EntityT*>(this));
 		}
 	};
@@ -2572,19 +2433,19 @@ namespace dpl
 		using	MyComposition::MyComposition;
 
 	protected:	// [LIFECYCLE]	
-		CLASS_CTOR				Entity(Entity&& other) noexcept = default;
-		Entity& operator=(Entity&& other) noexcept = default;
+		CLASS_CTOR				Entity(		Entity&&		other) noexcept = default;
+		Entity&					operator=(	Entity&&		other) noexcept = default;
 
 	private:	// [LIFECYCLE] (deleted)
-		CLASS_CTOR				Entity(const Entity& OTHER) = delete;
-		Entity& operator=(const Entity& OTHER) = delete;
+		CLASS_CTOR				Entity(		const Entity&	OTHER) = delete;
+		Entity&					operator=(	const Entity&	OTHER) = delete;
 
 	public:		// [FUNCTIONS]
 		// Override to save state of the EntityT members.
-		void					save_state(BinaryState& state) const {}
+		void					save_state(	BinaryState&	state) const {}
 
 		// Override to load state of the EntityT members.
-		void					load_state(BinaryState& state) {}
+		void					load_state(	BinaryState&	state) {}
 
 		bool					has_known_storage() const
 		{
@@ -2615,22 +2476,25 @@ namespace dpl
 				}
 			}
 
-			dpl::Logger::ref().push_error("Fail to destroy Type[%s]::Name[%s]", packPtr->entity_typeName().c_str(), MyComposition::name().c_str());
+			dpl::Logger::ref().push_error("Fail to destroy Type[%s]::Name[%s]", packPtr->get_entity_typeName().c_str(), MyComposition::name().c_str());
 		}
 
 	private:	// [FUNCTIONS]
-		void					save(BinaryState& state) const
+		void					save(		BinaryState&	state) const
 		{
 			if constexpr (has_Base<EntityT>) Base_of<EntityT>::save(state);
 			static_cast<const EntityT&>(*this).save_state(state);
 		}
 
-		void					load(BinaryState& state)
+		void					load(		BinaryState&	state)
 		{
 			if constexpr (has_Base<EntityT>) Base_of<EntityT>::load(state);
 			static_cast<EntityT&>(*this).load_state(state);
 		}
 	};
+
+
+#define DEFINE_SIMPLE_ENTITY(EntityT) class EntityT : public dpl::Entity<EntityT>{public: using Entity::Entity;}
 }
 
 // storage implementation	(internal)
@@ -2741,9 +2605,14 @@ namespace dpl
 		}
 
 	public:		// [BASIC]
-		void						reserve_names(				const uint32_t							NUM_NAMES)
+
+
+		void						reserve_additional_space(	const uint32_t							AMOUNT)
 		{
-			m_labeler.reserve(NUM_NAMES);
+			const uint32_t NEW_CAPACITY = m_entities.size() + AMOUNT;
+			m_labeler.reserve(NEW_CAPACITY);
+			m_entities.reserve(NEW_CAPACITY);
+			// NOTE: Component buffers are self regulated.
 		}
 
 		EntityT&					create(						const Name&								ENTITY_NAME)
@@ -2984,7 +2853,7 @@ namespace dpl
 		}
 
 	public:		// [IMPLEMENTATION]
-		virtual const std::string&	entity_typeName() const final override
+		virtual const std::string&	get_entity_typeName() const final override
 		{
 			static const std::string TYPE_NAME = dpl::undecorate_type_name<EntityT>();
 			return TYPE_NAME;
@@ -3081,16 +2950,19 @@ namespace dpl
 		friend class EntityPack_of;
 
 	private:	// [DATA]
-		uint8_t*		rawEntityBuffer;
-		uint64_t		stride;
-		ComponentArrays componentArrays;
-		uint32_t		numEntities;
+		uint8_t*							rawEntityBuffer;
+		uint64_t							stride;
+		ComponentArrays						componentArrays;
+
+	public:		// [DATA]
+		ReadOnly<uint32_t, EntityPackView>	numEntities;
 
 	private:		// [LIFECYCLE]
 		template<typename DerivedEntityT>
 		CLASS_CTOR		EntityPackView(			EntityPack_of<DerivedEntityT>&	pack)
 			: rawEntityBuffer(reinterpret_cast<uint8_t*>(pack.find()) + dpl::base_offset<EntityT, DerivedEntityT>())
 			, stride(sizeof(DerivedEntityT))
+			, numEntities(pack.size())
 		{
 			if constexpr (ComponentTypes::SIZE > 0)
 			{
@@ -3143,7 +3015,7 @@ namespace dpl
 		void			throw_if_invalid_index(	const uint32_t					INDEX) const
 		{
 #ifdef _DEBUG
-			if(INDEX >= numEntities)
+			if(INDEX >= numEntities())
 				throw GeneralException(this, __LINE__, "Index out of range");
 #endif // _DEBUG
 		}
@@ -3168,11 +3040,11 @@ namespace dpl
 
 	public:		// [LIFECYCLE]
 		template<typename... CTOR>
-		void			add_command(		BinaryState&			state,
+		void			add_command(		const Initializer&		INIT,
 											CTOR&&...				args)
 		{
 			if(was_executed()) throw InvalidCommand(this, __LINE__, "Invalid use");
-			m_commands.emplace_back(state, std::forward<CTOR>(args)...);
+			m_commands.emplace_back(INIT, std::forward<CTOR>(args)...);
 		}
 
 	private:	// [IMPLEMENTATION]
@@ -3196,14 +3068,15 @@ namespace dpl
 	};
 
 
-	template<typename ParentT, template<typename, typename> class RelationCommand>
+	template<typename EntityT, dpl::is_TypeList RELATED_TYPES, template<typename, typename> class RelationCommand>
 	class	EntityManager::MultiTypeCommand : public dpl::BinaryCommand
 	{
 	private:	// [SUBTYPES]
-		template<is_Entity ChildT>
-		using CommandChild		= RelationCommand<ParentT, ChildT>;
-		using AllCommandTypes	= AllChildTypes_of<ParentT>::template encapsulate_in<CommandChild>;
-		using CommandTuple		= typename AllCommandTypes::DataPack_r;
+		template<is_Entity RelatedT>
+		using	Subcommand	= RelationCommand<EntityT, RelatedT>;
+
+		using	AllCommandTypes	= RELATED_TYPES::template encapsulate_in<Subcommand>;
+		using	CommandTuple	= typename AllCommandTypes::DataPack_r;
 
 	private:	// [DATA]
 		CommandTuple m_cmdTuple;
@@ -3314,8 +3187,9 @@ namespace dpl
 	class	EntityManager::CMD_CreateGroupOf : public EntityManager::CommandGroupOf<EntityManager::CMD_Create<T>>
 	{
 	public:		// [SUBTYPES]
-		using MyCommand		= EntityManager::CMD_Create<T>;
-		using MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
+		using	MyCommand	= EntityManager::CMD_Create<T>;
+		using	MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
+		using	Initializer = typename EntityManager::CommandGroupOf<EntityManager::CMD_Create<T>>::Initializer;
 
 	private:	// [DATA]
 		std::string m_prefix;
@@ -3341,7 +3215,7 @@ namespace dpl
 		{
 			for(uint32_t index = 0; index < m_size; ++index)
 			{
-				MyCommands::add_command(state, Name::GENERIC, m_prefix);
+				MyCommands::add_command(Initializer(state), Name::GENERIC, m_prefix);
 			}
 		}
 	};
@@ -3393,7 +3267,7 @@ namespace dpl
 			, m_ref(PARENT)
 		{
 			if(!PARENT.numChildren<ChildT>())
-				throw InvalidCommand(__LINE__, "No children of the given type: ", EntityPack_of<ChildT>::ref().entity_typeName().c_str());
+				throw InvalidCommand(__LINE__, "No children of the given type: %s", EntityPack_of<ChildT>::ref().get_entity_typeName().c_str());
 		}
 
 	private:	// [IMPLEMENTATION]
@@ -3404,17 +3278,18 @@ namespace dpl
 
 			entity.for_each_child<ChildT>([&](ChildT& child)
 			{
-				MyCommands::add_command(state, child);
+				MyCommands::add_command(Initializer(state), child);
 			});
 		}
 	};
 
 	
 	template<is_Entity ParentT>
-	class	EntityManager::CMD_DestroyAllChildrenOf : public EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_DestroyChildrenIf>
+	class	EntityManager::CMD_DestroyAllChildrenOf : public EntityManager::MultiTypeCommand<ParentT, AllChildTypes_of<ParentT>, EntityManager::CMD_DestroyChildrenIf>
 	{
 	private:	// [SUBTYPES]
-		using MyBase = EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_DestroyChildrenIf>;
+		using	MyBase		= EntityManager::MultiTypeCommand<ParentT, AllChildTypes_of<ParentT>, EntityManager::CMD_DestroyChildrenIf>;
+		using	Initializer = typename MyBase::Initializer;
 
 	public:		// [LIFECYCLE]
 		CLASS_CTOR		CMD_DestroyAllChildrenOf(	const Initializer&		INIT,
@@ -3554,8 +3429,9 @@ namespace dpl
 	class	EntityManager::CMD_OrphanChildrenIf : public EntityManager::CommandGroupOf<EntityManager::CMD_Orphan<ParentT, ChildT>>
 	{
 	public:		// [SUBTYPES]
-		using MyCommand		= EntityManager::CMD_Orphan<ParentT, ChildT>;
-		using MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
+		using	MyCommand	= EntityManager::CMD_Orphan<ParentT, ChildT>;
+		using	MyCommands	= EntityManager::CommandGroupOf<MyCommand>;
+		using	Initializer = typename EntityManager::CommandGroupOf<EntityManager::CMD_Orphan<ParentT, ChildT>>::Initializer;
 
 	private:	// [DATA]
 		Reference m_ref;
@@ -3567,7 +3443,7 @@ namespace dpl
 			, m_ref(PARENT)
 		{
 			if(!PARENT.numChildren<ChildT>())
-				throw InvalidCommand(__LINE__, "No children of the given type: ", EntityPack_of<ChildT>::ref().entity_typeName().c_str());
+				throw InvalidCommand(__LINE__, "No children of the given type: ", EntityPack_of<ChildT>::ref().get_entity_typeName().c_str());
 		}
 
 	private:	// [IMPLEMENTATION]
@@ -3578,17 +3454,18 @@ namespace dpl
 
 			entity.for_each_child<ChildT>([&](ChildT& child)
 			{
-				MyCommands::add_command(state, child);
+				MyCommands::add_command(Initializer(state), child);
 			});
 		}
 	};
 
 
 	template<is_FinalEntity ParentT>
-	class	EntityManager::CMD_OrphanAllChildrenOf : public EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_OrphanChildrenIf>
+	class	EntityManager::CMD_OrphanAllChildrenOf : public EntityManager::MultiTypeCommand<ParentT, AllChildTypes_of<ParentT>, EntityManager::CMD_OrphanChildrenIf>
 	{
 	private:	// [SUBTYPES]
-		using MyBase = EntityManager::MultiTypeCommand<ParentT, EntityManager::CMD_OrphanChildrenIf>;
+		using	MyBase		= EntityManager::MultiTypeCommand<ParentT, AllChildTypes_of<ParentT>, EntityManager::CMD_OrphanChildrenIf>;
+		using	Initializer = typename MyBase::Initializer;
 
 	public:		// [LIFECYCLE]
 		CLASS_CTOR		CMD_OrphanAllChildrenOf(	const Initializer&		INIT,
@@ -3651,10 +3528,9 @@ namespace dpl
 										const Entity<EntityT>&	ENTITY)
 			: BinaryCommand(INIT)
 			, m_entityRef(ENTITY)
-			, m_partnerRef(PARTNER)
 		{
-			if(ENTITY.has_partner<PartnerT>()) 
-				throw InvalidCommand("%s is already involved with %s", ENTITY.name().c_str(), ENTITY.get_partner<PartnerT>().name().c_str());
+			if(!ENTITY.has_partner<PartnerT>()) 
+				throw InvalidCommand("%s is not involved with %s", ENTITY.name().c_str(), EntityPack_of<PartnerT>::ref().get_entity_typeName().c_str());
 
 			m_partnerRef.reset(&ENTITY.get_partner<PartnerT>());
 		}
@@ -3672,15 +3548,16 @@ namespace dpl
 	};
 
 
-	template<is_Entity EntityT, one_of_partner_types_of<EntityT> PartnerT>
-	class	EntityManager::CMD_DisinvolveAll : public EntityManager::MultiTypeCommand<EntityT, EntityManager::CMD_Disinvolve>
+	template<is_Entity EntityT>
+	class	EntityManager::CMD_DisinvolveAll : public EntityManager::MultiTypeCommand<EntityT, AllPartnerTypes_of<EntityT>, EntityManager::CMD_Disinvolve>
 	{
 	private:	// [SUBTYPES]
-		using MyBase = EntityManager::MultiTypeCommand<EntityT, EntityManager::CMD_Disinvolve>;
+		using	MyBase		= EntityManager::MultiTypeCommand<EntityT, AllPartnerTypes_of<EntityT>, EntityManager::CMD_Disinvolve>;
+		using	Initializer = typename MyBase::Initializer;
 
 	public:		// [LIFECYCLE]
 		CLASS_CTOR		CMD_DisinvolveAll(	const Initializer&		INIT,
-											const Entity<ParentT>&	ENTITY)
+											const Entity<EntityT>&	ENTITY)
 			: MyBase(INIT, ENTITY)
 		{
 
@@ -3710,7 +3587,7 @@ namespace dpl
 			EntityPack& pack = EntityManager::ref().get_base_variant(m_root.reference().storageID());
 			pack.for_each_dependent_child(m_root.reference().name(), STRONG_DEPENDENCY, [&](const Identity& CHILD_IDENTITY)
 			{
-				m_branches.add_command(state, CHILD_IDENTITY);
+				m_branches.add_command(BinaryCommand::Initializer(state), CHILD_IDENTITY);
 			});
 		}
 

@@ -172,9 +172,9 @@ namespace dpl
 			friend BinaryInvoker;
 
 		private:	// [DATA]
-			mutable BinaryState& state;
+			BinaryState& state;
 
-		private:	// [LIFECYCLE]
+		public:	// [LIFECYCLE]
 			CLASS_CTOR Initializer(BinaryState& state)
 				: state(state)
 			{

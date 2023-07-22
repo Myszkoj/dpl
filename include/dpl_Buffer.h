@@ -217,7 +217,8 @@ namespace dpl
 			}
 		}
 
-		void				fill(							const T&			DEFAULT)
+		template<typename U = T>
+		void				fill(							const U&			DEFAULT)
 		{
 			for(uint32_t index = 0; index < capacity(); ++index)
 			{

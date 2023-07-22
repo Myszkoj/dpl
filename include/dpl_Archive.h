@@ -204,12 +204,12 @@ namespace dpl
 		}
 
 	public: // functions
-		inline void				reserve(			const uint32_t			NUM_ENTRIES)
+		void					reserve(			const uint32_t			NUM_ENTRIES)
 		{
 			entries->reserve(NUM_ENTRIES);
 		}
 
-		inline uint32_t			get_numEntries() const
+		uint32_t				get_numEntries() const
 		{
 			return static_cast<uint32_t>(entries().size());
 		}
@@ -288,17 +288,17 @@ namespace dpl
 			return false;
 		}
 
-		inline EntryT*			find_entry(			const KeyValueT&		KEY_VALUE)
+		EntryT*					find_entry(			const KeyValueT&		KEY_VALUE)
 		{
 			return const_cast<EntryT*>(find_internal(KEY_VALUE));
 		}
 
-		inline const EntryT*	find_entry(			const KeyValueT&		KEY_VALUE) const
+		const EntryT*			find_entry(			const KeyValueT&		KEY_VALUE) const
 		{
 			return find_internal(KEY_VALUE);
 		}
 
-		inline void				for_each_entry(		const Invoke&			INVOKE)
+		void					for_each_entry(		const Invoke&			INVOKE)
 		{
 			for(auto& key : *entries)
 			{		
@@ -306,7 +306,7 @@ namespace dpl
 			}
 		}
 
-		inline void				for_each_entry(		const InvokeConst&		INVOKE) const
+		void					for_each_entry(		const InvokeConst&		INVOKE) const
 		{
 			for(const auto& KEY : entries())
 			{		
@@ -315,13 +315,13 @@ namespace dpl
 		}
 
 	private: // functions
-		inline const EntryT*	find_internal(		const KeyValueT&		KEY_VALUE) const
+		const EntryT*			find_internal(		const KeyValueT&		KEY_VALUE) const
 		{
 			auto it = entries().find(MyKey(KEY_VALUE));
 			return (it != entries().end()) ? static_cast<const EntryT*>(it->other()) : nullptr;
 		}
 
-		inline void				notify_moved()
+		void					notify_moved()
 		{
 			for(auto& key : *entries)
 			{

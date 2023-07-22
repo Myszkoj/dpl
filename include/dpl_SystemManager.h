@@ -455,6 +455,8 @@ namespace dpl
 		}
 
 	private:	// [INTERFACE]
+		virtual void		on_install(){}
+
 		virtual void		on_subsystems_saved(	Settings&					settings) const{}
 
 		virtual void		on_subsystems_loaded(	const Settings&				SETTINGS){}
@@ -462,6 +464,8 @@ namespace dpl
 		virtual void		on_start_update(){}
 
 		virtual void		on_subsystems_updated(){}
+
+		virtual void		on_uninstall(){}
 
 	private:	// [IMPLEMENTATION]
 		virtual void		on_save(				Settings&					settings) const final override
