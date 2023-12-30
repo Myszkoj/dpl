@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <thread>
 #include <mutex>
 #include <string>
@@ -23,7 +22,7 @@ namespace dpl
 	*/
 	class Logger : public dpl::Singleton<Logger>
 	{
-	public: // subtypes
+	public:		// [SUBTYPES]
 		enum	Category
 		{
 			INFO,
@@ -81,30 +80,30 @@ namespace dpl
 			}
 		};
 
-	public: // constants
+	public:		// [CONSTANTS]
 		static const uint32_t	NUM_CATEGORIES	= 3;
 		static const size_t		MAX_MSG_SIZE	= 512;
 
-	public: // data
+	public:		// [DATA]
 		ReadOnly<Lines,		Logger> lines;	// Accessing lines is not thread safe!
 		ReadOnly<uint32_t,	Logger> counters[NUM_CATEGORIES]; // One for each category. Accessing counters is not thread safe! (use dedicated function)
 		ReadOnly<Filter,	Logger> filter; // Accessing filter is not thread safe!
 
-	private: // data
+	private:	// [DATA]
 		mutable std::mutex m_mtx;
 
-	public: // lifecycle
-		CLASS_CTOR				Logger(				Multition&							multition)
+	public:		// [LIFECYCLE]
+		CLASS_CTOR			Logger(				Multition&							multition)
 			: Singleton(multition)
 		{
 
 		}
 
-	public: // thread safe functions
+	public:		// [THREAD-SAFE FUNCTIONS]
 		/*
 			Returns total number of lines.
 		*/
-		inline uint32_t			get_numLines() const
+		uint32_t			get_numLines() const
 		{
 			std::lock_guard lock(m_mtx);
 			return static_cast<uint32_t>(lines().size());
@@ -113,13 +112,13 @@ namespace dpl
 		/*
 			Returns number of lines of the given category.
 		*/
-		inline uint32_t			get_numLines(		const Category						CATEGORY) const
+		uint32_t			get_numLines(		const Category						CATEGORY) const
 		{
 			std::lock_guard lock(m_mtx);
 			return counters[CATEGORY];
 		}
 
-		inline void				show_all_categories()
+		void				show_all_categories()
 		{				
 			std::lock_guard lock(m_mtx);
 			filter->set_at(INFO,	true);
@@ -128,21 +127,21 @@ namespace dpl
 			filter->update(*lines);
 		}
 
-		inline void				show_category(		const Category						CATEGORY)
+		void				show_category(		const Category						CATEGORY)
 		{
 			std::lock_guard lock(m_mtx);
 			filter->set_at(CATEGORY, true);
 			filter->update(*lines);
 		}
 
-		inline void				toggle_category(	const Category						CATEGORY)
+		void				toggle_category(	const Category						CATEGORY)
 		{
 			std::lock_guard lock(m_mtx);
 			filter->toggle_at(CATEGORY);
 			filter->update(*lines);
 		}
 
-		inline void				hide_category(		const Category						CATEGORY)
+		void				hide_category(		const Category						CATEGORY)
 		{
 			std::lock_guard lock(m_mtx);
 			filter->set_at(CATEGORY, false);
@@ -182,8 +181,8 @@ namespace dpl
 
 		*/
 
-		std::uintptr_t			push_message(		const Category						CATEGORY,
-													const std::string_view				MESSAGE)
+		std::uintptr_t		push_message(		const Category						CATEGORY,
+												const std::string_view				MESSAGE)
 		{
 			std::lock_guard lock(m_mtx);
 			++(*counters[CATEGORY]);
@@ -191,8 +190,8 @@ namespace dpl
 			return 0;
 		}
 
-		std::uintptr_t			push_message(		const Category						CATEGORY, 
-													const char*							FORMAT, ...)
+		std::uintptr_t		push_message(		const Category						CATEGORY, 
+												const char*							FORMAT, ...)
 		{
 			std::lock_guard lock(m_mtx);
 			++(*counters[CATEGORY]);
@@ -207,48 +206,48 @@ namespace dpl
 			return 0;
 		}
 
-		inline std::uintptr_t	push_info(			const std::string_view				MESSAGE)
+		std::uintptr_t		push_info(			const std::string_view				MESSAGE)
 		{
 			return push_message(INFO, MESSAGE);
 		}
 
-		inline std::uintptr_t	push_warning(		const std::string_view				MESSAGE)
+		std::uintptr_t		push_warning(		const std::string_view				MESSAGE)
 		{
 			return push_message(WARNING, MESSAGE);
 		}
 
-		inline std::uintptr_t	push_error(			const std::string_view				MESSAGE)
+		std::uintptr_t		push_error(			const std::string_view				MESSAGE)
 		{
 			return push_message(ERROR, MESSAGE);
 		}
 
 		template<typename... Args>
-		inline std::uintptr_t	push_info(			const char*							FORMAT,
-													Args...								args)
+		std::uintptr_t		push_info(			const char*							FORMAT,
+												Args...								args)
 		{
 			return Logger::push_message(INFO, FORMAT, args...);
 		}
 
 		template<typename... Args>
-		inline std::uintptr_t	push_warning(		const char*							FORMAT,
-													Args...								args)
+		std::uintptr_t		push_warning(		const char*							FORMAT,
+												Args...								args)
 		{
 			return Logger::push_message(WARNING, FORMAT, args...);
 		}
 
 		template<typename... Args>
-		inline std::uintptr_t	push_error(			const char*							FORMAT,
-													Args...								args)
+		std::uintptr_t		push_error(			const char*							FORMAT,
+												Args...								args)
 		{
 			return Logger::push_message(ERROR, FORMAT, args...);
 		}
 
-		inline void				throw_runtime_error() const
+		void				throw_runtime_error() const
 		{
 			throw std::runtime_error("Errors detected: " + get_numLines(ERROR));
 		}
 
-		inline void				clear_category(		const Category						CATEGORY)
+		void				clear_category(		const Category						CATEGORY)
 		{
 			std::lock_guard lock(m_mtx);
 			if(counters[CATEGORY]() == 0) return;
@@ -258,7 +257,7 @@ namespace dpl
 			counters[CATEGORY]	= 0;
 		}
 
-		inline void				clear()
+		void				clear()
 		{
 			std::lock_guard lock(m_mtx);
 			lines				= std::move(Lines());
@@ -267,7 +266,7 @@ namespace dpl
 			counters[ERROR]		= 0;
 		}
 
-		inline bool				export_lines(		const std::string&					FILE) const
+		bool				export_lines(		const std::string&					FILE) const
 		{
 			std::ofstream fout(FILE, std::ios::trunc);
 			if(fout.fail() || fout.bad()) return false;
@@ -276,17 +275,17 @@ namespace dpl
 			return true;
 		}
 
-		inline void				log_if_exception(	const std::function<void()>&		FUNCTION,
-													const char*							FILE,
-													const int							LINE)
+		void				log_if_exception(	const std::function<void()>&		FUNCTION,
+												const char*							FILE,
+												const int							LINE)
 		{
 			if (no_except(FUNCTION)) return;
 			push_error("Silent exception thrown in %s at line: %d", FILE, LINE);
 		}
 
-	private: // functions
-		inline void				move_lines(			const Category						INVALID_CATEGORY,
-													Lines&								destination)
+	private:	// [FUNCTIONS]
+		void				move_lines(			const Category						INVALID_CATEGORY,
+												Lines&								destination)
 		{
 			const uint32_t NUM_LINES = static_cast<uint32_t>(lines().size());
 			for(uint32_t index = 0; index < NUM_LINES; ++index)

@@ -170,10 +170,12 @@
     <ClInclude Include="include\dpl_Repository.h" />
     <ClInclude Include="include\dpl_ResourceControl.h" />
     <ClInclude Include="include\dpl_Result.h" />
+    <ClInclude Include="include\dpl_SegmentedArray.h" />
     <ClInclude Include="include\dpl_Stream.h" />
     <ClInclude Include="include\dpl_StateManager.h" />
     <ClInclude Include="include\dpl_StaticHolder.h" />
     <ClInclude Include="include\dpl_std_addons.h" />
+    <ClInclude Include="include\dpl_ComponentManager.h" />
     <ClInclude Include="include\dpl_SystemManager.h" />
     <ClInclude Include="include\dpl_ThreadPool.h" />
     <ClInclude Include="include\dpl_TimeManager.h" />

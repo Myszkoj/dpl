@@ -14,11 +14,11 @@ namespace dpl
 	class	DynamicArray
 	{
 	public: // subtypes
-		using	OnModify		= std::function<void(dpl::Buffer<T>&)>;
-		using	Invocation		= std::function<void(T&)>;
-		using	ConstInvocation	= std::function<void(const T&)>;
-		using	value_type		= T;
-		using	size_type		= uint32_t;
+		using	OnModify	= std::function<void(dpl::Buffer<T>&)>;
+		using	Invoke		= std::function<void(T&)>;
+		using	InvokeConst	= std::function<void(const T&)>;
+		using	value_type	= T;
+		using	size_type	= uint32_t;
 
 		struct	iterator // dummy
 		{
@@ -40,10 +40,18 @@ namespace dpl
 			
 		}
 
-		CLASS_CTOR				DynamicArray(					const uint32_t				INITIAL_SIZE)
+		CLASS_CTOR				DynamicArray(					const size_type				INITIAL_SIZE)
 			: DynamicArray()
 		{
 			resize(INITIAL_SIZE);
+		}
+
+		CLASS_CTOR				DynamicArray(					const T*					BUFFER,
+																const size_type				SIZE)
+			: m_buffer(calculate_exponential_capacity(SIZE))
+			, m_size(SIZE)
+		{
+			m_buffer.copy_from(BUFFER, SIZE);
 		}
 
 		CLASS_CTOR				DynamicArray(					const DynamicArray&			OTHER)
@@ -181,7 +189,7 @@ namespace dpl
 			return DynamicArray::at(size()-1);
 		}
 
-		void					for_each(						const Invocation&			INVOKE)
+		void					for_each(						const Invoke&			INVOKE)
 		{
 			for(uint32_t index = 0; index < size(); ++index)
 			{
@@ -189,7 +197,7 @@ namespace dpl
 			}
 		}
 
-		void					for_each(						const ConstInvocation&		INVOKE) const
+		void					for_each(						const InvokeConst&		INVOKE) const
 		{
 			for(uint32_t index = 0; index < size(); ++index)
 			{

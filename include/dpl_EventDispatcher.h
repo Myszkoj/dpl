@@ -179,7 +179,7 @@ namespace dpl
 		{
 			if(newDispatcher)
 			{
-				newDispatcher->attach_back(*this);
+				newDispatcher->add_end_member(*this);
 			}
 			else
 			{

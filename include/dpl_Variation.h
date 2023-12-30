@@ -333,7 +333,7 @@ namespace dpl
 	template<typename VariationT, typename VariantT>
 	class Variant : public VirtualConstructable<Variant<VariationT, VariantT>, const typename Variation<VariationT, VariantT>::Binding&>
 	{
-	private:	// [SUBTYPES]
+	protected:	// [SUBTYPES]
 		using	MyVariation	= Variation<VariationT, VariantT>;
 
 	public:		// [SUBTYPES]

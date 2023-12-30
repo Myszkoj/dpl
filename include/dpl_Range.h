@@ -4,6 +4,7 @@
 #include <functional>
 #include <ratio>
 #include <iostream>
+#include <type_traits>
 #include "dpl_ReadOnly.h"
 #include "dpl_GeneralException.h"
 
@@ -13,11 +14,14 @@ namespace dpl
 	template<typename T>
 	class Range
 	{
-	public: // data
+	public:		// [SUBTYPES]
+		using Invoke = std::function<void(T)>;
+
+	public:		// [DATA]
 		ReadOnly<T, Range> min;
 		ReadOnly<T, Range> max;
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		CLASS_CTOR				Range()
 			: min((T)0)
 			, max((T)0)
@@ -32,7 +36,7 @@ namespace dpl
 			reset(MIN, MAX);
 		}
 
-	public: // operators
+	public:		// [OPERATORS]
 		friend std::istream&	operator>>(	std::istream&	stream, 
 											Range&			range) 
 		{
@@ -50,180 +54,196 @@ namespace dpl
 			return stream;
 		}
 
-	public: // functions
-		inline void				set_min(	const T			NEW_MIN)
+	public:		// [FUNCTIONS]
+		void					set_min(	const T			NEW_MIN)
 		{
 			min = NEW_MIN;
 			set_max(max());
 		}
 
-		inline void				set_max(	const T			NEW_MAX)
+		void					set_max(	const T			NEW_MAX)
 		{
 			max = (min() > NEW_MAX) ? min() : NEW_MAX;
 		}
 
-		inline void				reset(		const T			NEW_MIN,
+		void					reset(		const T			NEW_MIN,
 											const T			NEW_MAX)
 		{
 			min = NEW_MIN;
 			set_max(NEW_MAX);
 		}
 
-		inline T				size() const
+		T						size() const
 		{
 			return max() - min();
 		}
 
-		inline T				center() const
+		T						center() const
 		{
 			return (min() + max()) / (T)2;
 		}
 
-		inline T				clamp(		const T			VALUE) const
+		T						clamp(		const T			VALUE) const
 		{
 			if(VALUE < min()) return min();
 			if(VALUE > max()) return max();
 			return VALUE;
 		}
 
-		inline bool				contains(	const T			VALUE) const
+		bool					contains(	const T			VALUE) const
 		{
 			return (min() <= VALUE) && (VALUE >= max()); 
 		}
 
-		inline float			to_factor(	T				value) const
+		float					to_factor(	T				value) const
 		{
 			value = clamp(value);
 			return (float)(value-min())/(size());
 		}
 
-		inline T				from_factor(float			factor) const
+		T						from_factor(float			factor) const
 		{
 			if(factor < 0.f) factor = 0.f;
 			if(factor > 1.f) factor = 1.f;
 			return min() + (T)(factor * size());
 		}
+
+		template <std::integral U = T>
+		void					for_each(	const Invoke&	INVOKE) const
+		{
+			for(uint32_t index = min(); index <= max(); ++index)
+			{
+				INVOKE(index);
+			}
+		}
 	};
 
 
-	template<typename IndexT = uint32_t> requires std::is_integral_v<IndexT> && std::is_unsigned_v<IndexT>
+	template<std::unsigned_integral IndexT = uint32_t>
 	class IndexRange
 	{
-	public: // data
+	public:		// [CONSTANTS]
+		static const IndexRange WHOLE;
+
+	public:		// [SUBTYPES]
+		using InvokeAt			= std::function<void(IndexT)>;
+		using InvokeSubrange	= std::function<void(const IndexRange<IndexT>&)>;
+
+	public:		// [DATA]
 		ReadOnly<IndexT, IndexRange> begin;
 		ReadOnly<IndexT, IndexRange> end;
 
-	public: // lifecycle
-		CLASS_CTOR					IndexRange()
+	public:		// [LIFECYCLE]
+		CLASS_CTOR				IndexRange()
 			: begin(0)
 			, end(0)
 		{
 
 		}
 
-		CLASS_CTOR					IndexRange(		const IndexT									BEGIN)
+		CLASS_CTOR				IndexRange(		const IndexT			BEGIN)
 			: begin(BEGIN)
 			, end(BEGIN)
 		{
 
 		}
 
-		CLASS_CTOR					IndexRange(		const IndexT									BEGIN,
-													const IndexT									END)
+		CLASS_CTOR				IndexRange(		const IndexT			BEGIN,
+												const IndexT			END)
 			: begin(BEGIN)
 			, end(END)
 		{
 			check_swapped();
 		}
 
-	public: // functions
-		inline IndexT				size() const
+	public:		// [FUNCTIONS]
+		IndexT					size() const
 		{
 			return end() - begin();
 		}
 
-		inline bool					empty() const
+		bool					empty() const
 		{
 			return size() == 0;
 		}
 
-		inline IndexT				front() const
+		IndexT					front() const
 		{
 			check_size();
 			return begin();
 		}
 
-		inline IndexT				back() const
+		IndexT					back() const
 		{
 			check_size();
 			return end() - 1;
 		}
 
-		inline void					set_begin(		const IndexT									NEW_BEGIN)
+		void					set_begin(		const IndexT			NEW_BEGIN)
 		{
 			begin	= NEW_BEGIN;
 			end		= (NEW_BEGIN > end()) ? NEW_BEGIN : end();
 		}
 
-		inline void					set_end(		const IndexT									NEW_END)
+		void					set_end(		const IndexT			NEW_END)
 		{
 			begin	= (begin() < NEW_END) ? begin() : NEW_END;
 			end		= NEW_END;
 		}
 
-		inline void					reset()
+		void					reset()
 		{
 			begin	= 0;
 			end		= 0;
 			check_swapped();
 		}
 
-		inline void					reset(			const IndexT									NEW_BEGIN,
-													const IndexT									NEW_END)
+		void					reset(			const IndexT			NEW_BEGIN,
+												const IndexT			NEW_END)
 		{
 			begin	= NEW_BEGIN;
 			end		= NEW_END;
 			check_swapped();
 		}
 
-		inline void					increase_front(	const IndexT									AMOUNT = 1)
+		void					increase_front(	const IndexT			AMOUNT = 1)
 		{
 			check_begin(AMOUNT);
 			*begin -= AMOUNT;
 		}
 
-		inline void					increase_back(	const IndexT									AMOUNT = 1)
+		void					increase_back(	const IndexT			AMOUNT = 1)
 		{
 			*end += AMOUNT;
 		}
 
-		inline void					decrease_front(	const IndexT									AMOUNT = 1)
+		void					decrease_front(	const IndexT			AMOUNT = 1)
 		{
 			*begin += AMOUNT;
 			check_swapped();
 		}
 
-		inline void					decrease_back(	const IndexT									AMOUNT = 1)
+		void					decrease_back(	const IndexT			AMOUNT = 1)
 		{
 			check_end(AMOUNT);
 			*end -= AMOUNT;
 			check_swapped();
 		}
 
-		inline void					shift_front(	const IndexT									AMOUNT = 1)
+		void					shift_front(	const IndexT			AMOUNT = 1)
 		{
 			check_begin(AMOUNT);
 			*begin	-= AMOUNT;
 			*end	-= AMOUNT;
 		}
 
-		inline void					shift_back(		const IndexT									AMOUNT = 1)
+		void					shift_back(		const IndexT			AMOUNT = 1)
 		{
 			*begin	+= AMOUNT;
 			*end	+= AMOUNT;
 		}
 
-		inline IndexRange			intersection(	const IndexRange&								OTHER) const
+		IndexRange				intersection(	const IndexRange&		OTHER) const
 		{
 			IndexRange result = *this;
 
@@ -236,37 +256,37 @@ namespace dpl
 			return result;
 		}
 
-		inline bool					contains_index(	const IndexT									INDEX) const
+		bool					contains_index(	const IndexT			INDEX) const
 		{
 			return begin() <= INDEX && INDEX < end();
 		}
 
-		inline void					for_each(		std::function<void(IndexT)>						function) const
+		void					for_each(		const InvokeAt&			INVOKE) const
 		{
 			for(IndexT index = begin(); index < end(); ++index)
 			{
-				function(index);
+				INVOKE(index);
 			}
 		}
 
-		void						for_each_split(	const IndexT									NUM_SPLITS,
-													std::function<void(const IndexRange<IndexT>&)>	function) const
+		void					for_each_split(	const IndexT			NUM_SPLITS,
+												const InvokeSubrange&	INVOKE) const
 		{
 			const auto	SIZE		= size();
 			const auto	AVR_COUNT	= SIZE / NUM_SPLITS;
 
-			IndexRange<IndexT> current(begin(), begin() + AVR_COUNT + SIZE % NUM_SPLITS);
+			IndexRange<IndexT> subrange(begin(), begin() + AVR_COUNT + SIZE % NUM_SPLITS);
 
 			for(IndexT splitID = 0; splitID < NUM_SPLITS; ++splitID)
 			{
-				if(current.size() > 0) function(current);
-				*current.begin = current.end();
-				*current.end += AVR_COUNT;
+				if(subrange.size() > 0) INVOKE(subrange);
+				*subrange.begin = subrange.end();
+				*subrange.end += AVR_COUNT;
 			}
 		}
 
-	private: // functions
-		inline void					check_begin(	const IndexT									AMOUNT) const
+	private:	// [FUNCTIONS]
+		void					check_begin(	const IndexT			AMOUNT) const
 		{
 #ifdef _DEBUG
 			if(begin() < AMOUNT)
@@ -274,7 +294,7 @@ namespace dpl
 #endif 
 		}
 
-		inline void					check_end(		const IndexT									AMOUNT) const
+		void					check_end(		const IndexT			AMOUNT) const
 		{
 #ifdef _DEBUG
 			if(end() < AMOUNT)
@@ -282,7 +302,7 @@ namespace dpl
 #endif 
 		}
 
-		inline void					check_size() const
+		void					check_size() const
 		{
 #ifdef _DEBUG
 			if(size() == 0)
@@ -290,7 +310,7 @@ namespace dpl
 #endif
 		}
 
-		inline void					check_swapped() const
+		void					check_swapped() const
 		{
 #ifdef _DEBUG
 			if(begin() > end())
@@ -298,4 +318,8 @@ namespace dpl
 #endif
 		}
 	};
+
+
+	template<std::unsigned_integral IndexT>
+	const IndexRange<IndexT> IndexRange<IndexT>::WHOLE(0, std::numeric_limits<IndexT>::max());
 }

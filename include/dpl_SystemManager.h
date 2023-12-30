@@ -25,103 +25,28 @@ namespace dpl
 {
 	class	SystemManager;
 
+	class	ISystem;
+
+	template<typename SystemT>
 	class	System;
-
-	template<typename SystemT>
-	class	ParentSystem;
-
-	template<typename ParentSystemT>
-	class	ChildSystem;
-
-	template<typename SystemT, typename ParentSystemT>
-	class	Subsystem;
-	
-	template<typename SystemT>
-	class	PhaseSystem;
-
-	template<typename SystemT>
-	class	ParallelSystem;
-
 
 	static const uint32_t INSTALLATION_ORDER_HASH	= 999777111;
 	static const uint32_t SYSTEM_CATEGORY_HASH		= 888777111;
+
+	// Specialize to set parent system.
+	template<typename SystemT>
+	struct	Dependency_of
+	{
+		using ParentSystem = void;
+	};
+
+	template<typename T>
+	concept is_RootSystem	=  std::is_same_v<typename Dependency_of<T>::ParentSystem, T>
+							|| std::is_same_v<typename Dependency_of<T>::ParentSystem, void>
+							|| !std::is_base_of_v<ISystem, typename Dependency_of<T>::ParentSystem>;
 }
 
-// concepts
-namespace dpl
-{
-	template<typename T>
-	concept is_PhaseSystem		= std::is_base_of_v<PhaseSystem<T>, T>;
-
-	template<typename T>
-	concept is_ParallelSystem	= std::is_base_of_v<ParallelSystem<T>, T>;
-
-	template<typename T>
-	concept is_ParentSystem		= dpl::is_specialization_v<T, ParentSystem>;
-
-	template<typename T>
-	concept is_ChildSystem		= dpl::is_specialization_v<T, ChildSystem>;
-}
-
-// phase access
-namespace dpl
-{
-	template<typename SystemT, bool IS_CHILD_SYSTEM>
-	struct	BaseSystemQuery;
-
-	template<typename SystemT>
-	struct	BaseSystemQuery<SystemT, true>
-	{
-		using PARENT_SYSTEM = typename SystemT::PARENT_SYSTEM;
-	};
-
-	template<typename SystemT>
-	struct	BaseSystemQuery<SystemT, false>
-	{
-		using PARENT_SYSTEM = void;
-	};
-
-
-	class	PhaseUser
-	{
-	public:		// [FRIENDS]
-		template<typename>
-		friend class ChildSystem;
-
-		template<typename>
-		friend class PhaseSystem;
-
-	private:	// [LIFECYCLE]
-		CLASS_CTOR					PhaseUser() = default;
-
-	protected:	// [FUNCTIONS]
-		inline dpl::ParallelPhase&	phase();
-	};
-
-
-	template<typename SystemT>
-	struct	PhaseQuery
-	{
-	private:	using Base	=	typename BaseSystemQuery<SystemT, is_ChildSystem<SystemT>>::PARENT_SYSTEM;
-	public:		using PHASE	=	std::conditional_t<	is_PhaseSystem<SystemT>, // ?
-																			PhaseUser, 
-								std::conditional_t<	is_ChildSystem<SystemT>, // ?
-																			typename PhaseQuery<Base>::PHASE, 
-																			std::monostate>>;
-	};
-
-	template<>
-	struct	PhaseQuery<void>
-	{
-	using PHASE = std::monostate;
-	};
-
-
-	template<typename SystemT>
-	using	MaybePhaseUser = typename PhaseQuery<SystemT>::PHASE;
-}
-
-// interface
+// implementation
 namespace dpl
 {
 	class	Settings
@@ -277,37 +202,44 @@ namespace dpl
 	};
 
 
-	class	System	: public dpl::Variant<SystemManager, System>
-					, private dpl::Sequenceable<System, INSTALLATION_ORDER_HASH>
-					, private dpl::Sequenceable<System, SYSTEM_CATEGORY_HASH>
+	class	ISystem	: public dpl::Variant<SystemManager, ISystem>
+					, private dpl::Group<ISystem, ISystem>
+					, private dpl::Member<ISystem, ISystem>
+					, private dpl::Sequenceable<ISystem, INSTALLATION_ORDER_HASH>
+					, private dpl::Sequenceable<ISystem, SYSTEM_CATEGORY_HASH>
 	{
 	private:	// [SUBTYPES]
-		using	MyInstallationOrder = dpl::Sequenceable<System, INSTALLATION_ORDER_HASH>;
-		using	MyCategory			= dpl::Sequenceable<System, SYSTEM_CATEGORY_HASH>;
+		using	MyGroup				= dpl::Group<ISystem, ISystem>;
+		using	MyMembership		= dpl::Member<ISystem, ISystem>;
+		using	MySubsystems		= MyGroup;
+		using	MyInstallationOrder = dpl::Sequenceable<ISystem, INSTALLATION_ORDER_HASH>;
+		using	MyCategory			= dpl::Sequenceable<ISystem, SYSTEM_CATEGORY_HASH>;
 
 	public:		// [SUBTYPES]
 		using	Action	=  std::function<void()>;
 
 	public:		// [FRIENDS]
-		friend	SystemManager;
+		friend	MyGroup;
+		friend	MyGroup::MyBase;
+		friend	MyMembership;
+		friend	MyMembership::MyBase;
+		friend	MyMembership::MyLink;
 		friend	MyInstallationOrder;
 		friend	MyInstallationOrder::MyBase;
 		friend	MyCategory;
 		friend	MyCategory::MyBase;
+		friend	SystemManager;
 
 		template<typename>
-		friend class ParentSystem;
-
-		template<typename>
-		friend class ChildSystem;
+		friend class System;
 
 	public:		// [DATA]
-		dpl::ReadOnly<std::string,	System> name;
-		dpl::ReadOnly<uint64_t,		System>	updateCycle;
-		dpl::ReadOnly<dpl::Timer,	System>	updateTimer;
+		dpl::ReadOnly<std::string,	ISystem> name;
+		dpl::ReadOnly<uint64_t,		ISystem> updateCycle;
+		dpl::ReadOnly<dpl::Timer,	ISystem> updateTimer;
 
 	private:	// [LIFECYCLE]
-		CLASS_CTOR			System(						const Binding&		BINDING,
+		CLASS_CTOR			ISystem(					const Binding&		BINDING,
 														std::string			sysName)
 			: Variant(BINDING)
 			, name(sysName)
@@ -316,34 +248,23 @@ namespace dpl
 			
 		}
 
-		CLASS_CTOR			System(						const System&		OTHER)			= delete;
-		CLASS_CTOR			System(						System&&			other) noexcept = default;
-		System&				operator=(					const System&		OTHER)			= delete;
-		System&				operator=(					System&&			other) noexcept = default;
+		CLASS_CTOR			ISystem(					const ISystem&		OTHER)			= delete;
+		CLASS_CTOR			ISystem(					ISystem&&			other) noexcept = default;
+		ISystem&			operator=(					const ISystem&		OTHER)			= delete;
+		ISystem&			operator=(					ISystem&&			other) noexcept = default;
 
 	public:		// [LIFECYCLE]
-		CLASS_DTOR virtual ~System() = default;
+		CLASS_DTOR virtual ~ISystem() = default;
 
 	public:		// [FUNCTIONS]
+		double				get_total_update_time() const
+		{
+			return updateTimer().duration<dpl::Timer::Milliseconds>().count();
+		}
+
 		double				get_avrerage_update_time() const
 		{
-			return (updateCycle() > 0) ? (updateTimer().duration<dpl::Timer::Milliseconds>().count() / static_cast<double>(updateCycle())) : 0.0;
-		}
-
-	protected:	// [DIAGNOSTIC]
-		void				reset_diagnostic()
-		{
-			updateCycle = 0;
-			updateTimer->stop();
-		}
-
-		void				log_diagnostic()
-		{
-			dpl::Logger::ref().push_info("-----[SYSTEM DIAGNOSTIC]-----");
-			dpl::Logger::ref().push_info("name:               " + name());
-			dpl::Logger::ref().push_info("cycles:             " + std::to_string(updateCycle()));
-			dpl::Logger::ref().push_info("avr update time:    " + std::to_string(get_avrerage_update_time()) + "[ms]");
-			dpl::Logger::ref().push_info("total update time:  " + std::to_string(updateTimer().duration<dpl::Timer::Seconds>().count()) + "[s]");
+			return (updateCycle() > 0) ? (get_total_update_time() / updateCycle()) : 0.0;
 		}
 
 		void				log_and_throw_on_exception(	const Action&		ACTION)
@@ -364,18 +285,60 @@ namespace dpl
 			throw std::runtime_error("System failure");
 		}
 
+	private:	// [DIAGNOSTIC]
+		void				reset_diagnostic()
+		{
+			updateCycle = 0;
+			updateTimer->stop();
+		}
+
+		void				log_diagnostic()
+		{
+			dpl::Logger::ref().push_info("-----[SYSTEM DIAGNOSTIC]-----");
+			dpl::Logger::ref().push_info("name:               " + name());
+			dpl::Logger::ref().push_info("cycles:             " + std::to_string(updateCycle()));
+			dpl::Logger::ref().push_info("avr update time:    " + std::to_string(get_avrerage_update_time()) + "[ms]");
+			dpl::Logger::ref().push_info("total update time:  " + std::to_string(updateTimer().duration<dpl::Timer::Seconds>().count()) + "[s]");
+		}
+
 	private:	// [INTERFACE]
-		virtual void		on_save(					Settings&			settings) const{}
+		virtual void		on_save(					Settings&			settings) const {}
 
-		virtual void		on_load(					const Settings&		SETTINGS){}
+		virtual void		on_subsystems_saved(		Settings&			settings) const {}
 
-		virtual void		on_install(){}
+		virtual void		on_load(					const Settings&		SETTINGS) {}
 
-		virtual void		on_update(){}
+		virtual void		on_subsystems_loaded(		const Settings&		SETTINGS) {}
 
-		virtual void		on_uninstall(){}
+		virtual void		on_install() {}
+
+		virtual void		on_update(					ParallelPhase&		phase) {}
+
+		virtual void		on_subsystems_updated(		ParallelPhase&		phase) {}
+
+		virtual void		on_uninstall() {}
 
 	private:	// [FUNCTIONS]
+		void				save(						Settings&			settings) const
+		{
+			on_save(settings);
+			MySubsystems::for_each_member([&](const ISystem& SUBSYSTEM)
+			{
+				SUBSYSTEM.save(settings);
+			});
+			on_subsystems_saved(settings);
+		}
+
+		void				load(						const Settings&		SETTINGS)
+		{
+			on_load(SETTINGS);
+			MySubsystems::for_each_member([&](ISystem& subsystem)
+			{
+				subsystem.load(SETTINGS);
+			});
+			on_subsystems_loaded(SETTINGS);
+		}
+
 		void				install()
 		{
 			reset_diagnostic();
@@ -383,11 +346,19 @@ namespace dpl
 			dpl::Logger::ref().push_info("Successfully installed system:  " + name());
 		}
 
-		void				update()
+		void				update(						ParallelPhase&		phase)
 		{
 			++(*updateCycle);
 			updateTimer().is_started()? updateTimer->unpause() : updateTimer->start();
-			log_and_throw_on_exception([&](){on_update();});
+			log_and_throw_on_exception([&]()
+			{
+				on_update(phase);
+				MySubsystems::for_each_member([&](ISystem& subsystem)
+				{
+					subsystem.update(phase);
+				});
+				on_subsystems_updated(phase);
+			});
 			updateTimer->pause();
 		}
 
@@ -400,316 +371,113 @@ namespace dpl
 	};
 
 
-	class	SystemCategory : public dpl::Sequence<System, SYSTEM_CATEGORY_HASH>
-	{
-	public:		// [FRIENDS]
-		friend SystemManager;
-	};
-}
-
-// parent-child base
-namespace dpl
-{
 	template<typename SystemT>
-	class	ParentSystem	: public System
-							, public dpl::Singleton<SystemT>
-							, private dpl::Group<SystemT, ChildSystem<SystemT>>
+	class	System	: public ISystem
+					, public dpl::Singleton<SystemT>
 	{
 	private:	// [SUBTYPES]
 		using	MySingletonBase = dpl::Singleton<SystemT>;
-		using	MySubsystems	= dpl::Group<SystemT, ChildSystem<SystemT>>;
-
+		
 	public:		// [FRIENDS]
-		friend	MySubsystems;
-		friend	MySubsystems::MyBase;
-		friend	System;
 		friend	SystemManager;
-		friend	ChildSystem<SystemT>;
-
-		template<typename>
-		friend class PhaseSystem;
-
-		template<typename>
-		friend class ParallelSystem;
 
 	public:		// [SUBTYPES]
-		using	Binding = System::Binding;
+		using	Binding = ISystem::Binding;
 
-	private:	// [LIFECYCLE]
-		CLASS_CTOR			ParentSystem(			const Binding&				BINDING)
-			: System(BINDING, dpl::undecorate_type_name<SystemT>())
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR		System(			const Binding&		BINDING)
+			: ISystem(BINDING, dpl::undecorate_type_name<SystemT>())
 			, MySingletonBase(SystemManager::ref().owner())
 		{
 
 		}
 
-		CLASS_CTOR			ParentSystem(			const ParentSystem&			OTHER)			= delete;
-		CLASS_CTOR			ParentSystem(			ParentSystem&&				other) noexcept = default;
-		ParentSystem&		operator=(				const ParentSystem&			OTHER)			= delete;
-		ParentSystem&		operator=(				ParentSystem&&				other) noexcept = default;
-
-	private:	// [FUNCTIONS]
-		void				add_system(				ChildSystem<SystemT>&		subsystem)
-		{
-			MySubsystems::add_end_member(subsystem);
-		}
-
-	private:	// [INTERFACE]
-		virtual void		on_install(){}
-
-		virtual void		on_subsystems_saved(	Settings&					settings) const{}
-
-		virtual void		on_subsystems_loaded(	const Settings&				SETTINGS){}
-
-		virtual void		on_start_update(){}
-
-		virtual void		on_subsystems_updated(){}
-
-		virtual void		on_uninstall(){}
-
-	private:	// [IMPLEMENTATION]
-		virtual void		on_save(				Settings&					settings) const final override
-		{
-			MySubsystems::for_each_member([&](const System& SUBSYSTEM)
-			{
-				SUBSYSTEM.on_save(settings);
-			});
-			on_subsystems_saved(settings);
-		}
-
-		virtual void		on_load(				const Settings&				SETTINGS) final override
-		{
-			MySubsystems::for_each_member([&](System& subsystem)
-			{
-				subsystem.on_load(SETTINGS);
-			});
-			on_subsystems_loaded(SETTINGS);
-		}
-
-		virtual void		on_update() final override
-		{
-			on_start_update();
-			MySubsystems::for_each_member([&](System& subsystem)
-			{
-				subsystem.update();
-			});
-			on_subsystems_updated();
-		}
+		CLASS_CTOR		System(			const System&		OTHER)			= delete;
+		CLASS_CTOR		System(			System&&			other) noexcept = default;
+		System&			operator=(		const System&		OTHER)			= delete;
+		System&			operator=(		System&&			other) noexcept = default;
 	};
-
-
-	template<typename ParentSystemT>
-	class	ChildSystem		: public System
-							, public MaybePhaseUser<ParentSystemT>
-							, private dpl::Member<ParentSystemT, ChildSystem<ParentSystemT>>
-	{
-	private:	// [SUBTYPES]
-		using	MyGroup			= dpl::Group<ParentSystemT, ChildSystem<ParentSystemT>>;
-		using	MyMembership	= dpl::Member<ParentSystemT, ChildSystem<ParentSystemT>>;
-
-	public:		// [SUBTYPES]
-		using	PARENT_SYSTEM	= ParentSystemT;
-		using	Binding			= System::Binding;
-
-	public:		// [FRIENDS]
-		friend  SystemManager;
-		friend	MyGroup;
-		friend	MyMembership;
-		friend	MyMembership::MyBase;
-		friend	MyMembership::MyLink;
-		friend	ParentSystem<PARENT_SYSTEM>;
-
-		template<typename, typename>
-		friend class Subsystem;
-
-	private:	// [LIFECYCLE]
-		CLASS_CTOR			ChildSystem(		const Binding&			BINDING,
-												std::string				sysName)
-			: System(BINDING, sysName)
-		{
-
-		}
-
-		CLASS_CTOR			ChildSystem(		const ChildSystem&		OTHER)			= delete;
-		CLASS_CTOR			ChildSystem(		ChildSystem&&			other) noexcept = default;
-		ChildSystem&		operator=(			const ChildSystem&		OTHER)			= delete;
-		ChildSystem&		operator=(			ChildSystem&&			other) noexcept = default;
-	};
-}
-
-// system types
-namespace dpl
-{
-	template<typename SystemT, typename ParentSystemT>
-	class	Subsystem	: public ChildSystem<ParentSystemT>
-						, public dpl::Singleton<SystemT>
-	{
-	private:	// [SUBTYPES]
-		using	MySystemBase	= ChildSystem<ParentSystemT>;
-		using	MySingletonBase = dpl::Singleton<SystemT>;
-
-	public:		// [SUBSYSTEMS]
-		using	Binding			= System::Binding;
-
-	protected:	// [LIFECYCLE]
-		CLASS_CTOR		Subsystem(		const Binding&			BINDING)
-			: MySystemBase(BINDING, dpl::undecorate_type_name<SystemT>())
-			, MySingletonBase(SystemManager::ref().owner())
-		{
-
-		}
-
-		CLASS_CTOR		Subsystem(		const Subsystem&		OTHER)			= delete;
-		CLASS_CTOR		Subsystem(		Subsystem&&				other) noexcept = default;
-		Subsystem&		operator=(		const Subsystem&		OTHER)			= delete;
-		Subsystem&		operator=(		Subsystem&&				other) noexcept = default;
-	};
-
-
-	template<typename SystemT>
-	class	PhaseSystem		: public ParentSystem<SystemT>
-							, public PhaseUser
-	{
-	private:	// [SUBTYPES]
-		using	MySystemBase	= ParentSystem<SystemT>;
-
-	public:		// [SUBSYSTEMS]
-		using	Binding			= System::Binding;
-
-	protected:	// [LIFECYCLE]
-		CLASS_CTOR			PhaseSystem(		const Binding&			BINDING)
-			: MySystemBase(BINDING)
-		{
-
-		}
-
-		CLASS_CTOR			PhaseSystem(		const PhaseSystem&		OTHER)			= delete;
-		CLASS_CTOR			PhaseSystem(		PhaseSystem&&			other) noexcept = default;
-		PhaseSystem&		operator=(			const PhaseSystem&		OTHER)			= delete;
-		PhaseSystem&		operator=(			PhaseSystem&&			other) noexcept = default;
-	};
-
-
-	template<typename SystemT>
-	class	ParallelSystem	: public ParentSystem<SystemT>
-	{
-	private:	// [SUBTYPES]
-		using	MySystemBase	= ParentSystem<SystemT>;
-
-	public:		// [SUBSYSTEMS]
-		using	Binding			= System::Binding;
-
-	protected:	// [LIFECYCLE]
-		CLASS_CTOR			ParallelSystem(		const Binding&			BINDING)
-			: MySystemBase(BINDING)
-		{
-
-		}
-
-		CLASS_CTOR			ParallelSystem(		const ParallelSystem&	OTHER)			= delete;
-		CLASS_CTOR			ParallelSystem(		ParallelSystem&&		other) noexcept = default;
-		ParallelSystem&		operator=(			const ParallelSystem&	OTHER)			= delete;
-		ParallelSystem&		operator=(			ParallelSystem&&		other) noexcept = default;
-	};
-}
-
-// manager
-namespace dpl
-{
-	class	SystemInstaller
-	{
-	public:		// [FRIENDS]
-		friend SystemManager;
-
-	private:	// [LIFECYCLE]
-		CLASS_CTOR	SystemInstaller()
-		{
-
-		}
-
-	public:		// [FUNCTIONS]
-		template<typename SystemT>
-		void		install_system()
-		{
-			SystemManager::ref().install_system<SystemT>();
-		}
-	};
-
 
 
 	class	SystemManager	: public dpl::Singleton<SystemManager>
-							, public dpl::Variation<SystemManager, System>
-							, private dpl::Sequence<System, INSTALLATION_ORDER_HASH>
+							, public dpl::Variation<SystemManager, ISystem>
+							, private dpl::Sequence<ISystem, INSTALLATION_ORDER_HASH>
+							, private dpl::Sequence<ISystem, SYSTEM_CATEGORY_HASH>
 	{
 	private:	// [SUBTYPES]
-		using	MySystemCallback	= std::function<void(System&)>;
-		using	InstallationOrder	= dpl::Sequence<System, INSTALLATION_ORDER_HASH>;
+		using	MySystemCallback	= std::function<void(ISystem&)>;
+		using	InstallationOrder	= dpl::Sequence<ISystem, INSTALLATION_ORDER_HASH>;
+		using	RootSystems			= dpl::Sequence<ISystem, SYSTEM_CATEGORY_HASH>;
 
 	public:		// [SUBTYPES]
-		using	OnInstall			= std::function<void(SystemInstaller&)>;
+		class	Installer
+		{
+		public:		// [FRIENDS]
+			friend SystemManager;
+
+		private:	// [LIFECYCLE]
+			CLASS_CTOR	Installer()
+			{
+
+			}
+
+		public:		// [FUNCTIONS]
+			template<typename SystemT>
+			void		install_system()
+			{
+				SystemManager::ref().install_system<SystemT>();
+			}
+		};
+
+		using	OnInstall = std::function<void(Installer&)>;
 
 	public:		// [FRIENDS]
-		friend	SystemInstaller;
+		friend	Installer;
 		friend	InstallationOrder;
-		friend	PhaseUser;
+		friend	RootSystems;
 		
 	private:	// [DATA]
-		std::string				m_settingsFile;
-		dpl::Logger				m_logger;
-		SystemCategory			m_phaseSystems;
-		SystemCategory			m_parallelSystems;
-		dpl::ParallelPhase		m_phase; // All tasks must be done between system updates(call ThreadPool::wait when phase is done).
-		std::atomic_uint32_t	m_parallelWorkers;
-		std::atomic_bool		bParallelUpdate;
-		std::atomic_bool		bParallelFailure;
+		std::string			m_settingsFile;
+		dpl::Logger			m_logger;
+		dpl::ParallelPhase	m_phase; // All tasks must be done between system updates(call ThreadPool::wait when phase is done).
 
 	protected:		// [LIFECYCLE]
-		CLASS_CTOR				SystemManager(				Multition&				multition,
-															const std::string&		SETTINGS_FILE,
-															const uint32_t			NUM_THREADS = std::thread::hardware_concurrency())
+		CLASS_CTOR		SystemManager(			Multition&			multition,
+												const std::string&	SETTINGS_FILE,
+												const uint32_t		NUM_THREADS = std::thread::hardware_concurrency())
 			: Singleton(multition)
 			, m_settingsFile(SETTINGS_FILE)
 			, m_logger(multition)
 			, m_phase(NUM_THREADS)
-			, m_parallelWorkers(0)
-			, bParallelUpdate(false)
 		{
 
-		}
-
-		CLASS_DTOR				~SystemManager()
-		{
-			dpl::no_except([&](){ stop_parallel_update(); });
 		}
 
 	protected:	// [FUNCTIONS]
-		void					install_all_systems(		const OnInstall&		ON_INSTALL)
+		void			install_all_systems(	const OnInstall&	ON_INSTALL)
 		{
 			SystemManager::throw_if_systems_already_installed();
-			bParallelFailure = false;
 			m_logger.clear();
 			m_logger.push_info("Installing...");
-			SystemInstaller installer;
+			Installer installer;
 			ON_INSTALL(installer);
 			SystemManager::load_settings();
 		}
 
-		void					update_all_systems()
+		void			update_all_systems()
 		{
-			parallel_update();
-			m_phaseSystems.for_each([&](System& system)
+			RootSystems::for_each([&](ISystem& system)
 			{
-				system.update();
+				system.update(m_phase);
 				throw_if_phase_not_done();
 			});
 		}
 
-		void					uninstall_all_systems()
+		void			uninstall_all_systems()
 		{
 			m_logger.push_info("Uninstalling systems... ");
-			stop_parallel_update();
 			SystemManager::save_settings();
-			InstallationOrder::iterate_backwards([&](System& system)
+			InstallationOrder::iterate_backwards([&](ISystem& system)
 			{
 				system.uninstall();
 			});
@@ -717,21 +485,21 @@ namespace dpl
 		}
 
 	private:	// [IO]
-		bool					save_settings() const
+		bool			save_settings() const
 		{
 			Settings settings;
-			InstallationOrder::for_each([&](const System& SYSTEM)
+			InstallationOrder::for_each([&](const ISystem& SYSTEM)
 			{
 				SYSTEM.on_save(settings);
 			});
 			return settings.save_to_binary(m_settingsFile);
 		}
 
-		bool					load_settings()
+		bool			load_settings()
 		{
 			Settings settings;
 			if(!settings.load_from_binary(m_settingsFile))	return false;
-			InstallationOrder::for_each([&](System& system)
+			InstallationOrder::for_each([&](ISystem& system)
 			{
 				system.on_load(settings);
 			});
@@ -740,107 +508,46 @@ namespace dpl
 
 	private:	// [FUNCTIONS]
 		template<typename SystemT>
-		void					install_system()
+		void			install_system()
 		{
 			auto result = Variation::create_variant<SystemT>();
 
 			if(result)
 			{
-				if constexpr (is_PhaseSystem<SystemT>)
+				if constexpr (is_RootSystem<SystemT>)
 				{
-					m_phaseSystems.add_back(*result.get());
-				}
-				else if constexpr (is_ParallelSystem<SystemT>)
-				{
-					m_parallelSystems.add_back(*result.get());
+					RootSystems::add_back(*result.get());
 				}
 				else // child system
 				{
-					using ParentT = typename SystemT::PARENT_SYSTEM;
-					if(ParentSystem<ParentT>* parent = Variation::find_variant<ParentT>())
+					using ParentT = typename Dependency_of<SystemT>::ParentSystem;
+					if(System<ParentT>* parent = Variation::find_variant<ParentT>())
 					{
-						parent->add_system(*result.get());
+						parent->add_end_member(*result.get());
 					}
 					else // handle error
 					{
-						// [TODO]: Log error
-						throw dpl::GeneralException(this, __LINE__, "Could not find given parent system: ", dpl::undecorate_type_name<ParentT>().c_str());
 						Variation::destroy_variant<SystemT>();
-						return;
+						m_logger.push_error("Could not find given parent system: ", dpl::undecorate_type_name<ParentT>().c_str());
+						throw dpl::GeneralException(this, __LINE__, "Installation failure!");
 					}
 				}
 
-				System*	newSystem = result.get();
-						newSystem->install();
+				ISystem*	newSystem = result.get();
+							newSystem->install();
 
 				InstallationOrder::add_back(*newSystem);
 			}
 		}
 
-		void					launch_parallel_system(		System&					system)
-		{
-			std::thread([&]
-			{
-				++m_parallelWorkers;
-				while(bParallelUpdate)
-				{
-					try
-					{
-						system.update();
-					}
-					catch(const dpl::GeneralException& ERROR)
-					{
-						m_logger.push_error("[" + system.name() + "]: " + ERROR.what());
-						bParallelUpdate		= false;
-						bParallelFailure	= true;
-					}
-					catch(...)
-					{
-						m_logger.push_error("[" + system.name() + "]: Unknown exception");
-						bParallelUpdate		= false;
-						bParallelFailure	= true;
-					}
-				}
-				--m_parallelWorkers;
-
-			}).detach();
-		}
-
-		void					parallel_update()
-		{
-			if(!bParallelUpdate)
-			{
-				if(bParallelFailure)
-					throw dpl::GeneralException(this, __LINE__, "Exception in parallel system.");
-				
-				bParallelUpdate = true;
-
-				m_parallelSystems.for_each([&](System& system)
-				{
-					launch_parallel_system(system);
-				});
-
-				std::this_thread::sleep_for(std::chrono::microseconds(10));
-			}
-		}
-
-		void					stop_parallel_update()
-		{
-			bParallelUpdate = false;
-			while(m_parallelWorkers > 0)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			}
-		}
-
 	private:	// [EXCEPTIONS]
-		void					throw_if_systems_already_installed() const
+		void			throw_if_systems_already_installed() const
 		{
 			if(Variation::get_numVariants() > 0)
 				throw dpl::GeneralException(this, __LINE__, "Systems already installed.");
 		}
 
-		void					throw_if_phase_not_done() const
+		void			throw_if_phase_not_done() const
 		{
 #ifdef _DEBUG
 			if(m_phase.numTasks() > 0)
@@ -848,12 +555,6 @@ namespace dpl
 #endif // _DEBUG
 		}
 	};
-
-
-	dpl::ParallelPhase&	PhaseUser::phase()
-	{
-		return SystemManager::ref().m_phase;
-	}
 }
 
 #pragma warning( pop )

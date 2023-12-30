@@ -274,17 +274,26 @@ namespace dpl
 			}
 		}
 
+		void				copy_from(						const T*			SOURCE,
+															const uint32_t		NUM_ELEMENTS,
+															const uint32_t		SRC_OFFSET = 0,
+															const uint32_t		DST_OFFSET = 0)
+		{
+			throw_if_null_source(SOURCE, NUM_ELEMENTS);
+			throw_if_invalid_range(DST_OFFSET, NUM_ELEMENTS);
+			for(uint32_t index = 0; index < NUM_ELEMENTS; ++index)
+			{
+				Buffer::construct_at(index + DST_OFFSET, SOURCE[index + SRC_OFFSET]);
+			}
+		}
+
 		void				copy_from(						const Buffer&		SOURCE,
 															const uint32_t		NUM_ELEMENTS,
 															const uint32_t		SRC_OFFSET = 0,
 															const uint32_t		DST_OFFSET = 0)
 		{
 			SOURCE.throw_if_invalid_range(SRC_OFFSET, NUM_ELEMENTS);
-			throw_if_invalid_range(DST_OFFSET, NUM_ELEMENTS);
-			for(uint32_t index = 0; index < NUM_ELEMENTS; ++index)
-			{
-				Buffer::construct_at(index + DST_OFFSET, SOURCE[index + SRC_OFFSET]);
-			}
+			Buffer::copy_from(SOURCE, NUM_ELEMENTS, SRC_OFFSET, DST_OFFSET);
 		}
 
 		void				move_from(						Buffer&				source,
@@ -361,6 +370,15 @@ namespace dpl
 #ifdef _DEBUG
 			if(can_fit(OFFSET + COUNT)) return;
 			throw std::out_of_range("Buffer: Invalid range");
+#endif
+		}
+
+		void				throw_if_null_source(			const T*			SOURCE,
+															const uint32_t		COUNT) const
+		{
+#ifdef _DEBUG
+			if(COUNT == 0 || SOURCE != nullptr) return;
+			throw GeneralException(this, __LINE__, "Null source");
 #endif
 		}
 

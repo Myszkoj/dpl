@@ -32,7 +32,7 @@ namespace dpl
 		friend BinaryInvoker;
 
 	private:	// [DATA]
-		dpl::ReadOnly<std::stringstream, BinaryState> file;
+		dpl::ReadOnly<std::stringstream, BinaryState> data;
 
 	private:	// [LIFECYCLE]
 		CLASS_CTOR		BinaryState() = default;
@@ -43,7 +43,7 @@ namespace dpl
 		{
 			if constexpr (std::is_trivially_destructible_v<T>)
 			{
-				file->write(reinterpret_cast<const char*>(&DATA), sizeof(T));
+				data->write(reinterpret_cast<const char*>(&DATA), sizeof(T));
 			}
 			else // Force operator
 			{
@@ -57,7 +57,7 @@ namespace dpl
 		{
 			if constexpr (std::is_trivially_destructible_v<T>)
 			{
-				file->write(reinterpret_cast<const char*>(DATA), SIZE * sizeof(T));
+				data->write(reinterpret_cast<const char*>(DATA), SIZE * sizeof(T));
 			}
 			else // Force operator
 			{
@@ -81,7 +81,7 @@ namespace dpl
 		{
 			if constexpr (std::is_trivially_destructible_v<T>)
 			{
-				file->read(reinterpret_cast<char*>(&data), sizeof(T));
+				data->read(reinterpret_cast<char*>(&data), sizeof(T));
 			}
 			else // Force operator
 			{
@@ -95,7 +95,7 @@ namespace dpl
 		{
 			if constexpr (std::is_trivially_destructible_v<T>)
 			{
-				file->read(reinterpret_cast<char*>(data), SIZE * sizeof(T));
+				data->read(reinterpret_cast<char*>(data), SIZE * sizeof(T));
 			}
 			else // Force operator
 			{
@@ -131,22 +131,22 @@ namespace dpl
 	private:	// [COMMAND FUNCTIONS]
 		void			seekg(			const std::streamoff&	OFFSET)
 		{
-			file->seekg(OFFSET);
+			data->seekg(OFFSET);
 		}
 
 		void			seekp(			const std::streamoff&	OFFSET)
 		{
-			file->seekp(OFFSET);
+			data->seekp(OFFSET);
 		}
 
 		std::streamoff	tellg()
 		{
-			return file->tellg();
+			return data->tellg();
 		}
 
 		std::streamoff	tellp()
 		{
-			return file->tellp();
+			return data->tellp();
 		}
 	};
 }

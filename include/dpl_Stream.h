@@ -25,55 +25,55 @@ namespace dpl
 	class	StreamChunk;
 
 	template<is_Streamable T>
-	class	StreamController;
+	class	Stream;
 }
 
 // definitions
 namespace dpl
 {
-	enum	TransferFlags
-	{
-		RESIZED,
-		NEEDS_FLUSH,
-		KEPT // Inherited from transfer.
-	};
-
-
 	template<is_Streamable T>
-	class	StreamChunk	: private dpl::Member<StreamController<T>, StreamChunk<T>>
+	class	StreamChunk	: private dpl::Member<Stream<T>, StreamChunk<T>>
 	{
-	private: // subtypes
+	private:	// [SUBTYPES]
 		using	MyType			= StreamChunk<T>;
-		using	MyStream		= StreamController<T>;
+		using	MyStream		= Stream<T>;
 		using	MyMemberBase	= dpl::Member<MyStream, MyType>;
 		using	MyGroup			= dpl::Group<MyStream, MyType>;
 
-	public: // friends
+		enum	Flags
+		{
+			RESIZED, // chunk was resized and stream needs to be reorganized
+			ALWAYS_SYNCHRONIZED, // data is kept at both sides
+			MODIFIED_LOCALLY, // one or more item was modified locally
+			MODIFIED_REMOTELY, // one or more item was modified remotely
+		};
+
+	public:		// [FRIENDS]
 		friend	MyStream;
 		friend	MyMemberBase;
 		friend	MyGroup;
 		friend	dpl::Sequenceable<MyType>;
 
-	public: // subtypes
-		using	OnModify		= std::function<void(dpl::Buffer<T>&)>;
-		using	Range			= dpl::IndexRange<uint32_t>;
-		using	Invocation		= typename dpl::DynamicArray<T>::Invocation;
-		using	ConstInvocation	= typename dpl::DynamicArray<T>::ConstInvocation;
+	public:		// [SUBTYPES]
+		using	OnModify	= std::function<void(dpl::Buffer<T>&)>;
+		using	Range		= dpl::IndexRange<uint32_t>;
+		using	Invoke		= typename dpl::DynamicArray<T>::Invoke;
+		using	InvokeConst	= typename dpl::DynamicArray<T>::InvokeConst;
 
-	public: // data
-		mutable dpl::ReadOnly<Range,	StreamChunk>	range; // Note: May be invalid if transfer was not yet updated.
+	public:		// [DATA]
+		mutable dpl::ReadOnly<Range, StreamChunk>	range; // Note: May be invalid if transfer was not yet updated.
 
-	private: // data
-		mutable dpl::DynamicArray<T>					container;
-		mutable dpl::Mask32_t							flags;	
+	private:	// [DATA]
+		mutable dpl::DynamicArray<T>				container;
+		mutable dpl::Mask32_t						flags;	
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		CLASS_CTOR					StreamChunk()
 		{
-			flags.set_at(KEPT, true);
+			flags.set_at(ALWAYS_SYNCHRONIZED, true);
 		}
 
-		CLASS_CTOR					StreamChunk(					const StreamChunk&		OTHER)
+		CLASS_CTOR					StreamChunk(				const StreamChunk&		OTHER)
 			: range(0, OTHER.size())
 			, flags(OTHER.flags)
 		{
@@ -85,7 +85,7 @@ namespace dpl
 			}
 		}
 
-		CLASS_CTOR					StreamChunk(					StreamChunk&&			other) noexcept
+		CLASS_CTOR					StreamChunk(				StreamChunk&&			other) noexcept
 			: MyMemberBase(std::move(other))
 			, range(other.range)
 			, container(std::move(other.container))
@@ -99,7 +99,7 @@ namespace dpl
 			dpl::no_except([&](){	detach_from_stream();	});
 		}
 
-		StreamChunk&				operator=(						const StreamChunk&		OTHER)
+		StreamChunk&				operator=(					const StreamChunk&		OTHER)
 		{
 			detach_from_stream();
 			OTHER.read();
@@ -113,7 +113,7 @@ namespace dpl
 			return *this;
 		}
 
-		StreamChunk&				operator=(						StreamChunk&&			other) noexcept
+		StreamChunk&				operator=(					StreamChunk&&			other) noexcept
 		{
 			MyMemberBase::operator=(std::move(other));
 			range.swap(other.range);
@@ -122,18 +122,18 @@ namespace dpl
 			return *this;
 		}
 
-	public: // transfer functions
-		inline bool					is_stream_ready() const
+	public:		// [TRANSFER INFO]
+		bool						is_stream_ready() const
 		{
 			return MyMemberBase::is_member();
 		}
 
-		inline MyStream&			get_stream()
+		MyStream&					get_stream()
 		{
 			return *MyMemberBase::get_group();
 		}
 
-		inline const MyStream&		get_stream() const
+		const MyStream&				get_stream() const
 		{
 			return *MyMemberBase::get_group();
 		}
@@ -142,26 +142,27 @@ namespace dpl
 		{
 			if(restore())
 			{
-				mark_as_resized();
+				notify_resized();
 				MyMemberBase::detach();
-				flags.set_at(RESIZED,		false);
-				flags.set_at(NEEDS_FLUSH,	false);
-				flags.set_at(KEPT,			true);
+				flags.set_at(ALWAYS_SYNCHRONIZED,	true);
+				flags.set_at(RESIZED,				false);
+				flags.set_at(MODIFIED_LOCALLY,		false);
+				flags.set_at(MODIFIED_REMOTELY,		false);
 			}
 		}
 
-	public: // functions
-		inline uint32_t				offset() const
+	public:		// [GENERAL FUNCTIONS]
+		uint32_t					offset() const
 		{
 			return range().begin();
 		}
 
-		inline uint32_t				size() const
+		uint32_t					size() const
 		{
 			return range().size();
 		}
 
-		inline uint32_t				capacity() const
+		uint32_t					capacity() const
 		{
 			return container.capacity();
 		}
@@ -170,14 +171,14 @@ namespace dpl
 			Modify returned array.
 			Warning! Returned pointer may be invalidated when transfer is updated or array is resized.
 		*/
-		inline T*					modify()
+		T*							modify()
 		{
 			restore();
-			mark_as_modified();
+			notify_modified_locally();
 			return container.data();
 		}
 
-		inline void					modify_each(					const Invocation&		INVOKE)
+		void						modify_each(				const Invoke&			INVOKE)
 		{
 			modify();
 			container.for_each(INVOKE);
@@ -187,13 +188,13 @@ namespace dpl
 			Get read-only data.
 			Warning! Returned pointer may be invalidated when transfer is updated or array is resized.
 		*/
-		inline const T*				read() const
+		const T*					read() const
 		{
 			restore();
 			return container.data();
 		}
 
-		inline void					read_each(						const ConstInvocation&	INVOKE) const
+		void						read_each(					const InvokeConst&		INVOKE) const
 		{
 			read();
 			container.for_each(INVOKE);
@@ -203,192 +204,204 @@ namespace dpl
 			Returns INVALID_INDEX if out of range.
 			WARNING! This function calls read.
 		*/
-		inline uint32_t				index_of(						const T*				ADDRESS) const
+		uint32_t					index_of(					const T*				ADDRESS) const
 		{
 			read();
 			return container.index_of(ADDRESS);
 		}
 
 		template<typename... CTOR>
-		T&							emplace_back(					CTOR&&...				args)
+		T&							emplace_back(				CTOR&&...				args)
 		{
 			restore();
 			T& newData = container.emplace_back(std::forward<CTOR>(args)...);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 			return newData;
 		}
 
-		T*							enlarge(						const uint32_t			AMOUNT)
+		T*							enlarge(					const uint32_t			AMOUNT)
 		{
 			restore();
 			T* newData = container.enlarge(AMOUNT);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 			return newData;
 		}
 
-		void						reduce(							const uint32_t			AMOUNT)
+		void						reduce(						const uint32_t			AMOUNT)
 		{
 			restore();
 			container.reduce(AMOUNT);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		void						reduce_if_possible(				const uint32_t			AMOUNT)
+		void						reduce_if_possible(			const uint32_t			AMOUNT)
 		{
 			restore();
 			container.reduce_if_possible(AMOUNT);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		void						resize(							const uint32_t			NEW_SIZE)
+		void						resize(						const uint32_t			NEW_SIZE)
 		{
 			restore();
 			container.resize(NEW_SIZE);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		void						swap_elements(					const uint32_t			FIRST_INDEX,
-																	const uint32_t			SECOND_INDEX)
+		void						swap_elements(				const uint32_t			FIRST_INDEX,
+																const uint32_t			SECOND_INDEX)
 		{
 			if(FIRST_INDEX == SECOND_INDEX) return;
 			restore();
 			container.swap_elements(FIRST_INDEX, SECOND_INDEX);
-			mark_as_modified();
+			notify_modified_locally();
 		}
 
-		inline void					make_last(						const uint32_t			INDEX)
+		void						make_last(					const uint32_t			INDEX)
 		{
 			restore();
 			container.make_last(INDEX);
-			mark_as_modified();
+			notify_modified_locally();
 		}
 
-		void						fast_erase(						const uint32_t			ELEMENT_INDEX)
+		void						fast_erase(					const uint32_t			ELEMENT_INDEX)
 		{
 			restore();
 			container.fast_erase(ELEMENT_INDEX);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		T*							rearrange(						const dpl::DeltaArray&	DELTA)
+		T*							rearrange(					const dpl::DeltaArray&	DELTA)
 		{
 			restore();
 			container.rearrange(DELTA);
-			mark_as_modified();
+			notify_modified_locally();
 			return container.data();
 		}
 
-		inline void					destroy_all_elements()
+		void						destroy_all_elements()
 		{
 			container.clear();
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		void						import_from(					std::istream&			binary)
+	public:		// [IMPORT/EXPORT]
+		void						import_from(				std::istream&			binary)
 		{
 			container.import_from(binary);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		void						import_tail_from(				std::istream&			binary)
+		void						import_tail_from(			std::istream&			binary)
 		{
 			container.import_tail_from(binary);
-			mark_as_modified();
-			mark_as_resized();
+			notify_modified_locally();
+			notify_resized();
 		}
 
-		void						export_to(						std::ostream&			binary) const
+		void						export_to(					std::ostream&			binary) const
 		{
 			restore();
 			container.export_to(binary);
 		}
 
-		void						export_tail_to(					std::ostream&			binary,
-																	const uint32_t			TAIL_SIZE) const
+		void						export_tail_to(				std::ostream&			binary,
+																const uint32_t			TAIL_SIZE) const
 		{
 			restore();
 			container.export_tail_to(binary, TAIL_SIZE);
 		}
 
-	private: // functions
-		inline uint32_t				update_range(					const uint32_t			OFFSET) const
+	private:	// [INTERNAL FUNCTIONS]
+		bool						attach_to_stream(			MyStream&				stream)
+		{
+			detach_from_stream();
+			if(!stream.attach_back(*this)) return false;
+			flags.set_at(Flags::ALWAYS_SYNCHRONIZED, stream.bKeepFlushedData);
+			stream.request_resize();
+		}
+
+		uint32_t					update_range(				const uint32_t			OFFSET) const
 		{
 			const uint32_t SIZE = range().size();
 			range->reset(OFFSET, OFFSET + SIZE);
 			return SIZE;
 		}
 
+		void						notify_modified_locally()
+		{
+			if(flags.at(MODIFIED_LOCALLY)) return;
+			if(!is_stream_ready()) return;
+			flags.set_at(MODIFIED_LOCALLY, true);
+			get_stream().request_flush();
+		}
+
+		void						notify_resized()
+		{		
+			range->reset(0, container.size());
+			if(flags.at(RESIZED)) return;// Already marked as resized?
+			if(!is_stream_ready()) return;
+			flags.set_at(RESIZED, true);
+			get_stream().request_resize();
+		}
+
+		void						set_modified_remotely()
+		{
+			flags.set_at(MODIFIED_REMOTELY, true);
+		}
+
 		void						flush() const
 		{
-			if(!flags.at(NEEDS_FLUSH)) return;
+			if(!flags.at(MODIFIED_LOCALLY)) return;
 
-			const MyStream&	TRANSFER = get_stream();
-								TRANSFER.on_flush_array(range, container.data());
+			const MyStream&	STREAM = get_stream();
+							STREAM.on_flush_array(range, container.data());
 			
-			flags.set_at(RESIZED,		false);
-			flags.set_at(NEEDS_FLUSH,	false);
-			if(flags.at(KEPT)) return;
+			flags.set_at(RESIZED,			false);
+			flags.set_at(MODIFIED_LOCALLY,	false);
+			flags.set_at(MODIFIED_REMOTELY, false); //<-- Information was lost!
+			if(flags.at(ALWAYS_SYNCHRONIZED)) return;
 			container.clear();
 		}
 
-		bool						restore(						const bool				bMODIFIED_ON_RESIZE = false) const
+		bool						restore(					const bool				bMODIFIED_ON_RESIZE = false) const
 		{
 			if(!is_stream_ready()) return false;
-			if(!flags.at(KEPT) && !flags.at(NEEDS_FLUSH))
+			if(flags.at(MODIFIED_REMOTELY) 
+			|| !flags.at(ALWAYS_SYNCHRONIZED) && !flags.at(MODIFIED_LOCALLY))
 			{
 				container.reserve(size());
-				flags.set_at(RESIZED, false); //<-- Size was restored, any previous resize operation is lost.
 
 				const MyStream&	STREAM = get_stream();
 								STREAM.on_restore_array(range, container.data());
-								STREAM.notify_modified();
 
-				flags.set_at(NEEDS_FLUSH, true);
+				flags.set_at(RESIZED, false); //<-- Size was restored, any previous resize operation is lost.
+				flags.set_at(MODIFIED_REMOTELY, false); //<-- Data is now synchronized.
+
+				if(!flags.at(ALWAYS_SYNCHRONIZED)) //<-- User does not want to keep the data, force another flush.
+				{
+					flags.set_at(MODIFIED_LOCALLY, true);
+					STREAM.request_flush();
+				}
 			}
 			else if(bMODIFIED_ON_RESIZE)
 			{
-				flags.set_at(NEEDS_FLUSH, true); //<-- Flush forced by the transfer.
+				flags.set_at(MODIFIED_LOCALLY, true); //<-- Flush forced by the transfer.
 			}
 
 			return true;
 		}
 
-		inline void					request_flush()
-		{
-			if(!is_stream_ready()) return;
-			flags.set_at(NEEDS_FLUSH, true);
-			get_stream().notify_modified();
-		}
-
-		inline void					request_new_offset()
-		{
-			if(!is_stream_ready()) return;
-			get_stream().notify_resized();
-		}
-
-		inline void					mark_as_modified()
-		{
-			if(!flags.at(NEEDS_FLUSH)) request_flush();
-		}
-
-		inline void					mark_as_resized()
-		{		
-			range->reset(0, container.size());
-			if(flags.at(RESIZED)) return;// Already marked as resized?
-			flags.set_at(RESIZED, true);
-			request_new_offset();
-		}
-
-	private: // debug exceptions
-		inline void					throw_if_invalid_delta(			const dpl::DeltaArray&	DELTA) const
+	private:	// [DEBUG-ONLY]
+		void						throw_if_invalid_delta(		const dpl::DeltaArray&	DELTA) const
 		{
 #ifdef _DEBUG
 			if(DELTA.size() != size())
@@ -403,91 +416,89 @@ namespace dpl
 		Thread-safe as long as data is kept after flush.
 	*/
 	template<is_Streamable T>
-	class	StreamController : private dpl::Group<StreamController<T>, StreamChunk<T>>
+	class	Stream : private dpl::Group<Stream<T>, StreamChunk<T>>
 	{
-	private: // subtypes
-		using	MyType		= StreamController<T>;
+	private:	// [SUBTYPES]
+		using	MyType		= Stream<T>;
 		using	MyChunk		= StreamChunk<T>;
 		using	MyChainBase	= dpl::Group<MyType, MyChunk>;
 		using	MyLink		= dpl::Member<MyType, MyChunk>;
 
-	public: // relations
+	public:		// [FRIENDS]
 		friend	MyChunk;
 		friend	MyChainBase;
 		friend	MyLink;
 
-	public: // subtypes
-		using	Callback		= std::function<void(MyChunk&)>;
-		using	ConstCallback	= std::function<void(const MyChunk&)>;
+	public:		// [SUBTYPES]
+		using	Invoke		= std::function<void(MyChunk&)>;
+		using	InvokeConst	= std::function<void(const MyChunk&)>;
+		using	IndexRange	= dpl::IndexRange<uint32_t>;
 
-	public: // data
-		mutable dpl::ReadOnly<uint32_t, StreamController>	size; // Total number of data units.
-		dpl::ReadOnly<bool, StreamController>				bKeepFlushedData;
+	public:		// [DATA]
+		mutable dpl::ReadOnly<uint32_t, Stream>	size; // Total number of data units.
+		dpl::ReadOnly<bool, Stream>				bKeepFlushedData;
 
-	private: // data
-		mutable std::atomic_bool							bResized;
-		mutable std::atomic_bool							bNeedsFlush;
+	private:	// [DATA]
+		mutable std::atomic_bool				bResized;
+		mutable std::atomic_bool				bModifiedLocally;
 
-	protected: // lifecycle
-		CLASS_CTOR				StreamController(		const bool						bKEEP_FLUSHED_DATA = true)
+	protected:	// [LIFECYCLE]
+		CLASS_CTOR				Stream(						const bool			bKEEP_FLUSHED_DATA = true)
 			: size(0)
 			, bKeepFlushedData(bKEEP_FLUSHED_DATA)
 			, bResized(false)
-			, bNeedsFlush(false)
+			, bModifiedLocally(false)
 		{
 			
 		}
 			
-		CLASS_CTOR				StreamController(		const StreamController&			OTHER) = delete;
+		CLASS_CTOR				Stream(						const Stream&		OTHER) = delete;
 				
-		CLASS_CTOR				StreamController(		StreamController&&				other) noexcept
+		CLASS_CTOR				Stream(						Stream&&			other) noexcept
 			: MyChainBase(std::move(other))
 			, size(other.size)
 			, bKeepFlushedData(other.bKeepFlushedData)
 			, bResized(other.bResized.load())
-			, bNeedsFlush(other.bNeedsFlush.load())
+			, bModifiedLocally(other.bModifiedLocally.load())
 		{
 
 		}
 
-		StreamController&		operator=(				const StreamController&			OTHER) = delete;
+		Stream&					operator=(					const Stream&		OTHER) = delete;
 
-		StreamController&		operator=(				StreamController&&				other) noexcept
+		Stream&					operator=(					Stream&&			other) noexcept
 		{
 			detach_all_chunks();
 			MyChainBase::operator=(std::move(other));
 			size				= other.size;
 			bKeepFlushedData	= other.bKeepFlushedData;
 			bResized.store(other.bResized.load());
-			bNeedsFlush.store(other.bNeedsFlush.load());
+			bModifiedLocally.store(other.bModifiedLocally.load());
 			return *this;
 		}
 
-	public: // functions
+	public:		// [CHUNK HANDLING FUNCTIONS]
 		bool					needs_update() const
 		{
-			return bResized.load(std::memory_order_relaxed) || bNeedsFlush.load(std::memory_order_relaxed);
+			return bResized.load(std::memory_order_relaxed) || bModifiedLocally.load(std::memory_order_relaxed);
 		}
 
-		bool					add_chunk(				MyChunk&						chunk)
+		bool					add_chunk(					MyChunk&			chunk)
 		{
-			if(!MyChainBase::attach_back(chunk)) return false;
-			chunk.flags.set_at(TransferFlags::KEPT, bKeepFlushedData);
-			notify_resized();
-			return true;
+			return chunk.attach_to_stream(*this);
 		}
 
-		void					for_each_chunk(			const Callback&					FUNCTION)
+		void					for_each_chunk(				const Invoke&		INVOKE)
 		{
-			MyChainBase::iterate_forward(FUNCTION);
+			MyChainBase::iterate_forward(INVOKE);
 		}
 
-		void					for_each_chunk(			const ConstCallback&			FUNCTION) const
+		void					for_each_chunk(				const InvokeConst&	INVOKE) const
 		{
-			MyChainBase::iterate_forward(FUNCTION);
+			MyChainBase::iterate_forward(INVOKE);
 		}
 
-		void					detach_chunk(			MyChunk&						chunk)
+		void					detach_chunk(				MyChunk&			chunk)
 		{
 			if(chunk.is_linked_to(*this)) chunk.detach_from_stream();
 		}
@@ -500,61 +511,72 @@ namespace dpl
 			}
 		}
 
-	protected: // functions
-		void					update() const
-		{
-			update_size();
-
-			if(bNeedsFlush.load(std::memory_order_relaxed)) //<-- At least one array needs flush.
-			{
-				StreamController::for_each_chunk([&](const MyChunk& PACK)
-				{
-					PACK.flush();
-				});
-				bNeedsFlush.store(false, std::memory_order_relaxed);
-				on_updated();
-			}
-		}
-
-	private: // interface
-		virtual void			on_transfer_requested() const{}
-
-		virtual void			on_resized() const{}
-
-		virtual void			on_flush_array(			const dpl::IndexRange<uint32_t>	RANGE,
-														const T*						SOURCE) const{}
-
-		virtual void			on_restore_array(		const dpl::IndexRange<uint32_t>	RANGE,
-														T*								target) const{}
-
-		virtual void			on_updated() const{}
-
-	private: // functions
-		void					notify_resized() const
-		{
-			bResized.store(true, std::memory_order_relaxed);
-		}
-
-		void					notify_modified() const
-		{
-			bNeedsFlush.store(true, std::memory_order_relaxed);
-			on_transfer_requested();
-		}
-
-		void					update_size() const
+	protected:	// [UPDATE]
+		void					organize() const
 		{
 			if(bResized.load(std::memory_order_relaxed))
 			{
 				size = 0;
-				StreamController::for_each_chunk([&](const MyChunk& PACK)
+				Stream::for_each_chunk([&](const MyChunk& PACK)
 				{
 					PACK.restore(true); //<-- Make sure that data is restored before next flush.
 					*size += PACK.update_range(size);
 				});
-				on_resized(); //<-- Notify derived class
+				on_resized(); //<-- Notify derived class!
 				bResized.store(false, std::memory_order_relaxed);
-				bNeedsFlush.store(true, std::memory_order_relaxed);			
+				bModifiedLocally.store(true, std::memory_order_relaxed);			
 			}
+		}
+
+		void					update() const
+		{
+			organize();
+
+			if(bModifiedLocally.load(std::memory_order_relaxed))
+			{
+				Stream::for_each_chunk([&](const MyChunk& PACK)
+				{
+					PACK.flush();
+				});
+				bModifiedLocally.store(false, std::memory_order_relaxed);
+				on_updated();
+			}
+		}
+
+		void					notify_modified_remotely()
+		{
+			// Note that we cannot store bModifiedRemotely state, since 
+			// we do not know when will StreamChunk need to access its data.
+			if(!bKeepFlushedData) return;
+			Stream::for_each_chunk([&](MyChunk& pack)
+			{
+				pack.set_modified_remotely();
+			});			
+		}
+
+	private:	// [INTERFACE]
+		virtual void			on_transfer_requested() const{}
+
+		virtual void			on_resized() const{}
+
+		virtual void			on_flush_array(				const IndexRange	RANGE,
+															const T*			SOURCE) const{}
+
+		virtual void			on_restore_array(			const IndexRange	RANGE,
+															T*					target) const{}
+
+		virtual void			on_updated() const{}
+
+	private:	// [INTERNAL FUNCTIONS]
+		void					request_resize() const
+		{
+			bResized.store(true, std::memory_order_relaxed);
+		}
+
+		void					request_flush() const
+		{
+			bModifiedLocally.store(true, std::memory_order_relaxed);
+			on_transfer_requested();
 		}
 	};
 }

@@ -22,27 +22,27 @@ namespace dpl
 	template<typename ValueT, typename ClassT, typename MaskT, size_t BIT_INDEX, bool bDIRTY_STATE = true>
 	class DirtyValue
 	{
-	public: // relations
+	public:		// [FRIENDS]
 		friend ClassT;
 
-	public: // subtypes
+	public:		// [SUBTYPES]
 		using Type		= DirtyValue<ValueT, ClassT, MaskT, BIT_INDEX, bDIRTY_STATE>;
 		using Modify	= std::function<void(ValueT&)>;
 		using Update	= std::function<void(ValueT&, const MaskT)>;
 
 		static_assert(BIT_INDEX < sizeof(MaskT) * 8, "Invalid bit index.");
 
-	public: // constants
+	public:		// [CONSTANTS]
 		static const int64_t					INVALID_OFFSET = std::numeric_limits<int64_t>::max();
 		static ReadOnly<int64_t, DirtyValue>	OFFSET_FROM_MASK;
 
-	private: // data
+	private:	// [DATA]
 		dpl::ReadOnly<ValueT, DirtyValue> value;
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		template<typename... CTOR>
-		CLASS_CTOR				DirtyValue(				const void*				MASK_ADDRESS,
-														CTOR&&...				args)
+		CLASS_CTOR		DirtyValue(				const void*				MASK_ADDRESS,
+												CTOR&&...				args)
 			: value(std::forward<CTOR>(args)...)
 		{
 			//const int64_t THIS_OFFSET_FROM_MASK = ::member_offset(MASK_ADDRESS) - (reinterpret_cast<const uint8_t*>(this) - reinterpret_cast<const uint8_t*>(CLASS_ADDRESS));
@@ -57,68 +57,80 @@ namespace dpl
 			}
 		}
 
-		CLASS_CTOR				DirtyValue(				const DirtyValue&		OTHER)
+		CLASS_CTOR		DirtyValue(				const DirtyValue&		OTHER)
 			: value(OTHER.value)
 		{
 			make_dirty();
 		}
 
-		CLASS_CTOR				DirtyValue(				DirtyValue&&			other) noexcept
+		CLASS_CTOR		DirtyValue(				DirtyValue&&			other) noexcept
 			: value(std::move(other.value))
 		{
 
 		}
 
-	public: // operators
-		inline DirtyValue&		operator=(				const DirtyValue&		OTHER)
+	public:		// [OPERATORS]
+		DirtyValue&		operator=(				const DirtyValue&		OTHER)
 		{
 			set(OTHER.value);
 			return *this;
 		}
 
-		inline DirtyValue&		operator=(				DirtyValue&&			other) noexcept
+		DirtyValue&		operator=(				DirtyValue&&			other) noexcept
 		{
 			value = std::move(other.value);
 			return *this;
 		}
 
-		inline DirtyValue&		operator=(				const ValueT&			NEW_VALUE)
+		DirtyValue&		operator=(				const ValueT&			NEW_VALUE)
 		{
 			set(NEW_VALUE);
 			return *this;
 		}
 
-		inline operator			const ValueT&() const
+		operator		const ValueT&() const
 		{
 			return value;
 		}
 
-	public: // functions
-		inline void				swap(					DirtyValue&				other)
+	public:		// [FUNCTIONS]
+		void			swap(					DirtyValue&				other)
 		{
 			value.swap(other.value);
 			this->make_dirty();
 			other.make_dirty();
 		}
 
-		inline void				set(					const ValueT&			NEW_VALUE)
+		void			set(					const ValueT&			NEW_VALUE)
 		{
 			value = NEW_VALUE;
 			make_dirty();
 		}
 
-		inline void				set(					const Modify&			MODIFY)
+		void			set(					const Modify&			MODIFY)
 		{
 			MODIFY(*value);
 			make_dirty();
 		}
 
-		inline const ValueT&	get() const
+		const ValueT&	get() const
 		{
 			return value;
 		}
 
-		inline void				validate_mask() const
+		const MaskT&	get_mask() const
+		{
+			validate_mask();
+			return *reinterpret_cast<const MaskT*>(reinterpret_cast<const char*>(this) + OFFSET_FROM_MASK());
+		}
+
+		void			make_dirty()
+		{
+			get_mask().set_at(BIT_INDEX, bDIRTY_STATE);
+		}
+
+	private:	// [FUNCTIONS]
+		void			validate_mask() const
 		{
 #ifdef _DEBUG
 			if(OFFSET_FROM_MASK == INVALID_OFFSET) // This should never happen.
@@ -126,28 +138,14 @@ namespace dpl
 #endif
 		}
 
-		inline const MaskT&		get_mask() const
-		{
-			validate_mask();
-			return *reinterpret_cast<const MaskT*>(reinterpret_cast<const char*>(this) + OFFSET_FROM_MASK());
-		}
-
-		inline void				make_dirty()
-		{
-			get_mask().set_at(BIT_INDEX, bDIRTY_STATE);
-		}
-
-	private: // functions
-		inline MaskT&			get_mask()
+		MaskT&			get_mask()
 		{
 			validate_mask();
 			return *reinterpret_cast<MaskT*>(reinterpret_cast<char*>(this) + OFFSET_FROM_MASK());
 		}
 
-		/*
-			Invokes UPDATE if value was modified, then clears the flag. 
-		*/
-		inline void				update(					const Update&			UPDATE)
+		// Invokes UPDATE if value was modified, then clears the flag. 
+		void			update(					const Update&			UPDATE)
 		{
 			MaskT& mask = get_mask();
 			if(mask.at(BIT_INDEX) == bDIRTY_STATE)
@@ -167,6 +165,8 @@ namespace dpl
 namespace dpl
 {
 	/*
+		template<T, MIN, MAX, DEFAULT>
+
 		Stores given value T and keeps it within the <MIN, MAX> range.
 	 
 		[PROBLEM]: 
@@ -178,15 +178,15 @@ namespace dpl
 	template<typename T, T MIN, T MAX, T DEFAULT = MIN>
 	class RangedValue
 	{
-	public: // constants
+	public:		// [CONSTANTS]
 		static const Range<T> RANGE;
 
-	private: // data
+	private:	// [DATA]
 		T value;
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		CLASS_CTOR				RangedValue()
-			: value(clamp(DEFAULT))
+			: value(RangedValue::clamp(DEFAULT))
 		{
 			
 		}
@@ -197,7 +197,7 @@ namespace dpl
 
 		}
 
-	public: // operators
+	public:		// [OPERATORS]
 		operator				const T() const
 		{
 			return value;
@@ -244,7 +244,7 @@ namespace dpl
 			return stream;
 		}
 
-	public: // functions
+	public:		// [FUNCTIONS]
 		void					swap(				RangedValue&		other) noexcept
 		{
 			std::swap(value, other.value);
@@ -283,7 +283,7 @@ namespace dpl
 			value = RANGE.max();
 		}
 
-	private: // functions
+	private:	// [FUNCTIONS]
 		void					clamp()
 		{
 			if(value < RANGE.min()) value = RANGE.min();
@@ -309,10 +309,10 @@ namespace dpl
 	template<typename T, T DEFAULT>
 	class CommonValue
 	{
-	private: // data
+	private:	// [DATA]
 		static T value;
 
-	public: // lifecycle
+	public:		// [LIFECYCLE]
 		CLASS_CTOR		CommonValue() = default;
 
 		CLASS_CTOR		CommonValue(	const CommonValue&	OTHER) = default;
@@ -323,54 +323,54 @@ namespace dpl
 
 		CommonValue&	operator=(		CommonValue&&		other) noexcept = default;
 
-	public: // operators
-		inline operator const T&() const
+	public:		// [OPERATORS]
+		operator const T&() const
 		{
 			return value;
 		}
 
-		inline const T& operator()() const
+		const T&		operator()() const
 		{
 			return value;
 		}
 
-		inline bool		operator==(		const T&			OTHER) const
+		bool			operator==(		const T&			OTHER) const
 		{
 			return value == OTHER;
 		}
 
-		inline bool		operator!=(		const T&			OTHER) const
+		bool			operator!=(		const T&			OTHER) const
 		{
 			return value != OTHER;
 		}
 
-		inline bool		operator==(		const CommonValue&	OTHER) const
+		bool			operator==(		const CommonValue&	OTHER) const
 		{
 			return value == OTHER;
 		}
 
-		inline bool		operator!=(		const CommonValue&	OTHER) const
+		bool			operator!=(		const CommonValue&	OTHER) const
 		{
 			return value != OTHER;
 		}
 
-	public: // functions
-		inline void		swap(		CommonValue&		other) noexcept
+	public:		// [FUNCTIONS]
+		void			swap(			CommonValue&		other) noexcept
 		{
 			std::swap(value, other.value);
 		}
 
-		inline void		set(		const T				NEW_VALUE)
+		void			set(			const T				NEW_VALUE)
 		{
 			value = NEW_VALUE;
 		}
 
-		inline void		set_default()
+		void			set_default()
 		{
 			set(DEFAULT);
 		}
 
-		inline const T& get() const
+		const T&		get() const
 		{
 			return value;
 		}

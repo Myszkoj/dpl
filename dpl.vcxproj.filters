@@ -171,6 +171,12 @@
     <ClInclude Include="include\dpl_SystemManager.h">
       <Filter>patterns - Application\Managers</Filter>
     </ClInclude>
+    <ClInclude Include="include\dpl_ComponentManager.h">
+      <Filter>patterns - Application\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dpl_SegmentedArray.h">
+      <Filter>containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="dpl_TODO.txt" />

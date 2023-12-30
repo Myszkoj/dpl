@@ -12,7 +12,6 @@
 #pragma warning( push )
 #pragma warning( disable : 26110) //<-- Solves "Caller failing to hold lock..." VS bug.
 
-
 // declarations
 namespace dpl
 {
@@ -49,7 +48,7 @@ namespace dpl
 		}
 
 	protected:	// [FUNCTIONS]
-		inline void			set_previous_state();
+		void				set_previous_state();
 
 		template<is_State T>
 		void				set_next_state(	const Invoke<T>&	INVOKE_STATE = nullptr)

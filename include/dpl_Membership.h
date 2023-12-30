@@ -243,6 +243,11 @@ namespace dpl
 			return m_numMembers;
 		}
 
+		bool					empty() const
+		{
+			return size() == 0;
+		}
+
 		/*
 			Returns true if object is a nullptr or it points to the internal loop object(end of the sequence).
 		*/

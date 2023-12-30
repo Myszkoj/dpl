@@ -2,16 +2,13 @@
 
 
 #include <algorithm>
-#include "dpl_TypeTraits.h"
 #include "dpl_NamedType.h"
 #include "dpl_Membership.h"
-#include "dpl_Variation.h"
 #include "dpl_Labelable.h"
 #include "dpl_StaticHolder.h"
-#include "dpl_Singleton.h"
 #include "dpl_std_addons.h"
 #include "dpl_Logger.h"
-#include "dpl_Stream.h"
+#include "dpl_ComponentManager.h"
 #include "dpl_Command.h"
 
 
@@ -23,6 +20,7 @@
 	- custom factory pattern for EntityManager and EntityPack
 	- parent-child relation should not be possible if parent type is derived from one of the types that are already on the child's list of parents
 	- parent-child relation should not be possible if child type is derived from one of the types that are already on the parent's list of children
+	- Relation should accept any uint32_t except 0 as first argument which should be interpreted as max number of children.
 */
 
 
@@ -41,6 +39,9 @@ namespace dpl
 	class	EntityPack;
 
 	template<typename EntityT>
+	class	EntityStorageNode;
+
+	template<typename EntityT>
 	class	EntityPack_of;
 
 	template<typename EntityT>
@@ -52,10 +53,11 @@ namespace dpl
 // entity info				<------------------------------ FOR THE USER
 namespace dpl
 {
-	enum	RelationType
+	enum	RelationType : uint32_t
 	{
-		ONE_TO_ONE, // A parent can only have one child of the given type.
-		ONE_TO_MANY // A parent can have many children of the given type.
+		ONE_TO_ONE = 1, // A parent can only have one child of the given type.
+		// ONE_TO_SPECIFIC_NUMBER // Allows specific number of children. (TODO)
+		ONE_TO_MANY = std::numeric_limits<uint32_t>::max() // A parent can have many children of the given type.
 	};
 
 	enum	Dependency
@@ -222,25 +224,6 @@ namespace dpl
 	struct	ComponentQuery<void>
 	{
 		using AllComponentTypes = dpl::TypeList<>;
-	};
-
-
-
-	template<typename T, bool IS_STREAMABLE>
-	struct	ArrayQuery;
-
-	template<typename T>
-	struct	ArrayQuery<T, true>
-	{
-		static const bool IS_STREAMABLE = true;
-		using Type = dpl::StreamChunk<T>;
-	};
-
-	template<typename T>
-	struct	ArrayQuery<T, false>
-	{
-		static const bool IS_STREAMABLE = false;
-		using Type = dpl::DynamicArray<T>;
 	};
 }
 
@@ -444,6 +427,8 @@ namespace dpl
 			return EntityPack_of<T>::ref().typeID() == storageID();
 		}
 
+		const std::string&		get_typeName() const;
+
 	private:	// [FUNCTIONS]
 		void					set_name_internal(	const Name::Type	NAME_TYPE,
 													const std::string&	STR,
@@ -459,6 +444,24 @@ namespace dpl
 	using	MaybeIdentified	= std::conditional_t<!has_Base<EntityT>, Identity, Base_of<EntityT>>;
 }
 
+// invoke types				<------------------------------ FOR THE USER
+namespace dpl
+{
+	using	InvokeIdentity = std::function<void(const Identity&)>;
+		
+	using	EntityIndex	= uint32_t;
+	using	NumEntities	= uint32_t;
+
+	template<is_Entity T> using	InvokeEntity						= std::function<void(T&)>;	
+	template<is_Entity T> using	InvokeConstEntity					= std::function<void(const T&)>;	
+	template<is_Entity T> using	InvokeIndexedEntity					= std::function<void(T&, EntityIndex)>;
+	template<is_Entity T> using	InvokeConstIndexedEntity			= std::function<void(const T&, EntityIndex)>;
+	template<is_Entity T> using	InvokeEntityBuffer					= std::function<void(T*, NumEntities)>;
+	template<is_Entity T> using	InvokeConstEntityBuffer				= std::function<void(const T*, NumEntities)>;
+	template<is_Entity T> using	InvokeSimilarEntityBuffer			= std::function<void(EntityPackView<T>&)>;
+	template<is_Entity T> using InvokeSimilarIndexedEntityBuffer	= std::function<void(dpl::EntityPackView<T>, uint32_t)>;
+}
+
 // entity storage			<------------------------------ FOR THE USER
 namespace dpl
 {
@@ -472,9 +475,6 @@ namespace dpl
 
 		template<typename>
 		friend class EntityPack_of;
-
-	public:		// [SUBTYPES]
-		using	InvokeIdentity = std::function<void(const Identity&)>;
 
 	public:		// [COMMANDS]
 		class	CMD_DestroyHierarchy;
@@ -596,18 +596,6 @@ namespace dpl
 
 		template<is_Entity EntityT>
 		class	CMD_DisinvolveAll;
-
-	public:		// [SUBTYPES]
-		using	EntityIndex	= uint32_t;
-		using	NumEntities	= uint32_t;
-
-		template<is_Entity T> using	InvokeEntity					= std::function<void(T&)>;
-		template<is_Entity T> using	InvokeEntityBuffer				= std::function<void(T*, NumEntities)>;
-		template<is_Entity T> using	InvokeConstEntity				= std::function<void(const T&)>;
-		template<is_Entity T> using	InvokeConstEntityBuffer			= std::function<void(const T*, NumEntities)>;
-		template<is_Entity T> using	InvokeIndexedEntity				= std::function<void(T&, EntityIndex)>;
-		template<is_Entity T> using	InvokeConstIndexedEntity		= std::function<void(const T&, EntityIndex)>;
-		template<is_Entity T> using	InvokeSimilarEntityBuffer		= std::function<void(EntityPackView<T>&)>;
 
 	private:	// [DATA]
 		BinaryInvoker m_invoker;
@@ -749,43 +737,79 @@ namespace dpl
 		template<is_Entity T>
 		void					for_each(					const InvokeEntity<T>&						INVOKE)
 		{
-			EntityPack_of<T>::get().for_each(INVOKE);
-		}
-
-		template<is_Entity T>
-		void					for_each(					const InvokeEntityBuffer<T>&				INVOKE)
-		{
-			EntityPack_of<T>::get().for_each(INVOKE);
+			EntityPack_of<T>::ref().for_each(INVOKE);
 		}
 
 		template<is_Entity T>
 		void					for_each(					const InvokeConstEntity<T>&					INVOKE) const
 		{
-			EntityPack_of<T>::get().for_each(INVOKE);
-		}
-
-		template<is_Entity T>
-		void					for_each(					const InvokeConstEntityBuffer<T>&			INVOKE) const
-		{
-			EntityPack_of<T>::get().for_each(INVOKE);
+			EntityPack_of<T>::ref().for_each(INVOKE);
 		}
 
 		template<is_Entity T>
 		void					for_each(					const InvokeIndexedEntity<T>&				INVOKE)
 		{
-			EntityPack_of<T>::get().for_each(INVOKE);
+			EntityPack_of<T>::ref().for_each(INVOKE);
 		}
 
 		template<is_Entity T>
 		void					for_each(					const InvokeConstIndexedEntity<T>&			INVOKE)
 		{
-			EntityPack_of<T>::get().for_each(INVOKE);
+			EntityPack_of<T>::ref().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeEntityBuffer<T>&				INVOKE)
+		{
+			EntityPack_of<T>::ref().for_each(INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each(					const InvokeConstEntityBuffer<T>&			INVOKE) const
+		{
+			EntityPack_of<T>::ref().for_each(INVOKE);
 		}
 
 		template<is_Entity T>
 		void					for_each(					const InvokeSimilarEntityBuffer<T>&			INVOKE)
 		{
-			EntityPack_of<T>::get().for_each(INVOKE);
+			EntityPack_of<T>::ref().for_each(INVOKE);
+		}
+
+	public:		// [PARALLEL ITERATION]
+		template<is_Entity T>
+		void					for_each_in_parallel(		dpl::ParallelPhase&							phase,
+															const InvokeEntity<T>&						INVOKE)
+		{
+			EntityPack_of<T>::ref().for_each_in_parallel(phase, INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each_in_parallel(		dpl::ParallelPhase&							phase,
+															const InvokeConstEntity<T>&					INVOKE) const
+		{
+			EntityPack_of<T>::ref().for_each_in_parallel(phase, INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each_in_parallel(		dpl::ParallelPhase&							phase,
+															const InvokeIndexedEntity<T>&				INVOKE)
+		{
+			EntityPack_of<T>::ref().for_each_in_parallel(phase, INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each_in_parallel(		dpl::ParallelPhase&							phase,
+															const InvokeConstIndexedEntity<T>&			INVOKE)
+		{
+			EntityPack_of<T>::ref().for_each_in_parallel(phase, INVOKE);
+		}
+
+		template<is_Entity T>
+		void					for_each_in_parallel(		dpl::ParallelPhase&							phase,
+															const InvokeSimilarIndexedEntityBuffer<T>&	INVOKE)
+		{
+			EntityPack_of<T>::ref().for_each_in_parallel(phase, INVOKE);
 		}
 
 	public:		// [FUNCTIONS]
@@ -815,6 +839,13 @@ namespace dpl
 			});
 		}
 	};
+
+
+	const std::string&	Identity::get_typeName() const
+	{
+		EntityPack* pack = EntityManager::ref().find_base_variant(storageID());
+		return pack? pack->get_entity_typeName() : "??unknown_entity_type??";
+	}
 }
 
 // references				(internal, RTTI)
@@ -1045,6 +1076,26 @@ namespace dpl
 			return *MyBaseT::other();
 		}
 
+		ChildT*				get_prev_sibling()
+		{
+			return nullptr;
+		}
+
+		const ChildT*		get_prev_sibling() const
+		{
+			return nullptr;
+		}
+
+		ChildT*				get_next_sibling()
+		{
+			return nullptr;
+		}
+
+		const ChildT*		get_next_sibling() const
+		{
+			return nullptr;
+		}
+
 		void				save_parent(		BinaryState&			state) const
 		{
 			Reference::save_to_binary_opt(MyBaseT::other(), state);
@@ -1114,6 +1165,26 @@ namespace dpl
 		const ParentT&		get_parent() const
 		{
 			return *MyMemberT::get_group();
+		}
+
+		ChildT*				get_prev_sibling()
+		{
+			return MyMemberT::previous();
+		}
+
+		const ChildT*		get_prev_sibling() const
+		{
+			return MyMemberT::previous();
+		}
+
+		ChildT*				get_next_sibling()
+		{
+			return MyMemberT::next();
+		}
+
+		const ChildT*		get_next_sibling() const
+		{
+			return MyMemberT::next();
 		}
 
 		void				save_parent(		BinaryState&			state) const
@@ -1186,6 +1257,30 @@ namespace dpl
 		const ParentT&		get_parent() const
 		{
 			return MyChildBase<ParentT>::get_parent();
+		}
+
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		ChildT*				get_prev_sibling()
+		{
+			return MyChildBase<ParentT>::get_prev_sibling();
+		}
+
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		const ChildT*		get_prev_sibling() const
+		{
+			return MyChildBase<ParentT>::get_prev_sibling();
+		}
+
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		ChildT*				get_next_sibling()
+		{
+			return MyChildBase<ParentT>::get_next_sibling();
+		}
+
+		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
+		const ChildT*		get_next_sibling() const
+		{
+			return MyChildBase<ParentT>::get_next_sibling();
 		}
 
 		template<dpl::is_one_of<PARENT_TYPES>	ParentT>
@@ -1499,6 +1594,8 @@ namespace dpl
 	public: // subtypes
 		using	InvokeChild					= std::function<void(ChildT&)>;
 		using	InvokeConstChild			= std::function<void(const ChildT&)>;
+		using	InvokeChildUntil			= std::function<bool(ChildT&)>;
+		using	InvokeConstChildUntil		= std::function<bool(const ChildT&)>;
 
 	public: // friends
 		friend	ChildBaseT;
@@ -1513,12 +1610,12 @@ namespace dpl
 
 	private: // lifecycle
 		CLASS_CTOR			ParentBase() = default;
-		CLASS_CTOR			ParentBase(						ParentBase&&				other) noexcept = default;
-		ParentBase&			operator=(						ParentBase&&				other) noexcept = default;
+		CLASS_CTOR			ParentBase(						ParentBase&&					other) noexcept = default;
+		ParentBase&			operator=(						ParentBase&&					other) noexcept = default;
 
 	private: // lifecycle (deleted)
-		CLASS_CTOR			ParentBase(						const ParentBase&			OTHER) = delete;
-		ParentBase&			operator=(						const ParentBase&			OTHER) = delete;
+		CLASS_CTOR			ParentBase(						const ParentBase&				OTHER) = delete;
+		ParentBase&			operator=(						const ParentBase&				OTHER) = delete;
 
 	private: // functions
 		bool				has_child() const
@@ -1536,12 +1633,12 @@ namespace dpl
 			return has_child()? 1 : 0;
 		}
 
-		bool				add_child(						ChildT&						child)
+		bool				add_child(						ChildT&							child)
 		{
 			return MyBaseT::link(child);
 		}
 
-		bool				remove_child(					ChildT&						child)
+		bool				remove_child(					ChildT&							child)
 		{
 			if(MyBaseT::other() != &child) return false;
 			return MyBaseT::unlink();
@@ -1591,46 +1688,56 @@ namespace dpl
 			return MyBaseT::other();
 		}
 
-		ChildT*				previous_child(					MyLinkT&					child)
+		ChildT*				previous_child(					MyLinkT&						child)
 		{
 			return nullptr;
 		}
 
-		const ChildT*		previous_child(					const MyLinkT&				CHILD) const
+		const ChildT*		previous_child(					const MyLinkT&					CHILD) const
 		{
 			return nullptr;
 		}
 
-		ChildT*				next_child(						MyLinkT&					child)
+		ChildT*				next_child(						MyLinkT&						child)
 		{
 			return nullptr;
 		}
 
-		const ChildT*		next_child(						const MyLinkT&				CHILD) const
+		const ChildT*		next_child(						const MyLinkT&					CHILD) const
 		{
 			return nullptr;
 		}
 
-		uint32_t			for_each_child(					const InvokeChild&			INVOKE_CHILD)
+		uint32_t			for_each_child(					const InvokeChild&				INVOKE_CHILD)
 		{
 			if(!has_child()) return 0;
 			INVOKE_CHILD(get_child());
 			return 1;
 		}
 
-		uint32_t			for_each_child(					const InvokeConstChild&		INVOKE_CHILD) const
+		uint32_t			for_each_child(					const InvokeConstChild&			INVOKE_CHILD) const
 		{
 			if(!has_child()) return 0;
 			INVOKE_CHILD(get_child());
 			return 1;
 		}
 
-		void				save_children(					BinaryState&				state) const
+		uint32_t			for_each_child_until(			const InvokeChildUntil&			INVOKE_CHILD)
+		{
+			return ParentBase::for_each_child([&](ChildT& child){ INVOKE_CHILD(child); });
+		}
+
+		uint32_t			for_each_child_until(			const InvokeConstChildUntil&	INVOKE_CHILD) const
+		{
+			return ParentBase::for_each_child([&](const ChildT& CHILD){ INVOKE_CHILD(CHILD); });
+		}
+
+		void				save_children(					BinaryState&					state) const
 		{
 			Reference::save_to_binary_opt(first_child(), state);
 		}
 
-		void				load_children(					BinaryState&				state)
+		void				load_children(					BinaryState&					state)
 		{
 			MyBaseT::unlink();
 			const Reference REFERENCE(state);
@@ -1659,6 +1766,8 @@ namespace dpl
 	public: // subtypes
 		using	InvokeChild					= std::function<void(ChildT&)>;
 		using	InvokeConstChild			= std::function<void(const ChildT&)>;
+		using	InvokeChildUntil			= std::function<bool(ChildT&)>;
+		using	InvokeConstChildUntil		= std::function<bool(const ChildT&)>;
 
 	public: // friends
 		friend	ChildBaseT;
@@ -1673,12 +1782,12 @@ namespace dpl
 
 	private: // lifecycle
 		CLASS_CTOR			ParentBase() = default;
-		CLASS_CTOR			ParentBase(					ParentBase&&				other) noexcept = default;
-		ParentBase&			operator=(					ParentBase&&				other) noexcept = default;
+		CLASS_CTOR			ParentBase(					ParentBase&&					other) noexcept = default;
+		ParentBase&			operator=(					ParentBase&&					other) noexcept = default;
 
 	private: // lifecycle (deleted)
-		CLASS_CTOR			ParentBase(					const ParentBase&			OTHER) = delete;
-		ParentBase&			operator=(					const ParentBase&			OTHER) = delete;
+		CLASS_CTOR			ParentBase(					const ParentBase&				OTHER) = delete;
+		ParentBase&			operator=(					const ParentBase&				OTHER) = delete;
 
 	private: // functions
 		bool				has_child() const
@@ -1696,7 +1805,7 @@ namespace dpl
 			return MyGroupT::size();
 		}
 			
-		bool				add_child(					ChildT&						child)
+		bool				add_child(					ChildT&							child)
 		{
 			/*
 			if (ChildFilter<ParentT, ChildT>()(static_cast<const ParentT&>(*this), child))
@@ -1707,7 +1816,7 @@ namespace dpl
 			return MyGroupT::add_end_member(child);
 		}
 
-		bool				remove_child(				ChildT&						child)
+		bool				remove_child(				ChildT&							child)
 		{
 			return MyGroupT::remove_member(child);
 		}
@@ -1756,38 +1865,48 @@ namespace dpl
 			return MyGroupT::last();
 		}
 
-		ChildT*				previous_child(				MyMemberT&					child)
+		ChildT*				previous_child(				MyMemberT&						child)
 		{
 			if(!child.is_member_of(*this)) return nullptr;
 			return child.previous();
 		}
 			
-		const ChildT*		previous_child(				const MyMemberT&			CHILD) const
+		const ChildT*		previous_child(				const MyMemberT&				CHILD) const
 		{
 			if(!CHILD.is_member_of(*this)) return nullptr;
 			return CHILD.previous();
 		}
 
-		ChildT*				next_child(					MyMemberT&					child)
+		ChildT*				next_child(					MyMemberT&						child)
 		{
 			if(!child.is_member_of(*this)) return nullptr;
 			return child.next();
 		}
 
-		const ChildT*		next_child(					const MyMemberT&			CHILD) const
+		const ChildT*		next_child(					const MyMemberT&				CHILD) const
 		{
 			if(!CHILD.is_member_of(*this)) return nullptr;
 			return CHILD.next();
 		}
 
-		uint32_t			for_each_child(				const InvokeChild&			INVOKE_CHILD)
+		uint32_t			for_each_child(				const InvokeChild&				INVOKE_CHILD)
 		{
 			return MyGroupT::for_each_member(INVOKE_CHILD);
 		}
 
-		uint32_t			for_each_child(				const InvokeConstChild&		INVOKE_CHILD) const
+		uint32_t			for_each_child(				const InvokeConstChild&			INVOKE_CHILD) const
 		{
 			return MyGroupT::for_each_member(INVOKE_CHILD);
+		}
+
+		uint32_t			for_each_child_until(		const InvokeChildUntil&			INVOKE_CHILD)
+		{
+			return MyGroupT::for_each_member_until(INVOKE_CHILD);
+		}
+
+		uint32_t			for_each_child_until(		const InvokeConstChildUntil&	INVOKE_CHILD) const
+		{
+			return MyGroupT::for_each_member_until(INVOKE_CHILD);
 		}
 
 		void				detach_children()
@@ -1798,7 +1917,7 @@ namespace dpl
 			}
 		}
 
-		void				save_children(				BinaryState&				state) const
+		void				save_children(				BinaryState&					state) const
 		{
 			state.save<uint32_t>(numChildren());
 			ParentBase::for_each_child([&](const ChildT& CHILD)
@@ -1807,7 +1926,7 @@ namespace dpl
 			});
 		}
 
-		void				load_children(				BinaryState&				state)
+		void				load_children(				BinaryState&					state)
 		{
 			detach_children();
 			Reference reference;
@@ -1837,16 +1956,22 @@ namespace dpl
 		using	MyPartnerBase	= Partner<ParentT, PartnerList_of<ParentT>>;
 
 	public:		// [SUBTYPES]
-		using	CHILD_TYPES		= dpl::TypeList<ChildTn...>;
+		using	CHILD_TYPES			= dpl::TypeList<ChildTn...>;
 
 		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		using	Invoke			= std::function<void(ChildT&)>;
+		using	Invoke				= std::function<void(ChildT&)>;
 
 		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		using	InvokeConst		= std::function<void(const ChildT&)>;
+		using	InvokeConst			= std::function<void(const ChildT&)>;
 
 		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		using	ParentBase_of	= ParentBase_t<ParentT, ChildT>;
+		using	InvokeUntil			= std::function<bool(ChildT&)>;
+
+		template<dpl::is_one_of<CHILD_TYPES> ChildT>
+		using	InvokeConstUntil	= std::function<bool(const ChildT&)>;
+
+		template<dpl::is_one_of<CHILD_TYPES> ChildT>
+		using	ParentBase_of		= ParentBase_t<ParentT, ChildT>;
 
 	public:		// [FRIENDS]
 		friend	EntityManager;
@@ -1856,18 +1981,18 @@ namespace dpl
 		friend	class ChildBase;
 
 	protected:	// [LIFECYCLE]
-		CLASS_CTOR				Parent(						const Origin&				ORIGIN)
+		CLASS_CTOR				Parent(						const Origin&					ORIGIN)
 			: MyPartnerBase(ORIGIN)
 		{
 
 		}
 
-		CLASS_CTOR				Parent(						Parent&&					other) noexcept = default;
-		Parent&					operator=(					Parent&&					other) noexcept = default;
+		CLASS_CTOR				Parent(						Parent&&						other) noexcept = default;
+		Parent&					operator=(					Parent&&						other) noexcept = default;
 
 	private:	// [LIFECYCLE] (deleted)
-		CLASS_CTOR				Parent(						const Parent&				OTHER) = delete;
-		Parent&					operator=(					const Parent&				OTHER) = delete;
+		CLASS_CTOR				Parent(						const Parent&					OTHER) = delete;
+		Parent&					operator=(					const Parent&					OTHER) = delete;
 
 	public:		// [FUNCTIONS]
 		template<dpl::is_one_of<CHILD_TYPES> ChildT>
@@ -1925,50 +2050,62 @@ namespace dpl
 		}
 
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
-		ChildT*					previous_child(				ChildT&						child)
+		ChildT*					previous_child(				ChildT&							child)
 		{
 			return ParentBase_of<Base_in_list<ChildT, CHILD_TYPES>>::previous_child(child);
 		}
 
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
-		const ChildT*			previous_child(				const ChildT&				CHILD) const
+		const ChildT*			previous_child(				const ChildT&					CHILD) const
 		{
 			return ParentBase_of<Base_in_list<ChildT, CHILD_TYPES>>::previous_child(CHILD);
 		}
 
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
-		ChildT*					next_child(					ChildT&						child)
+		ChildT*					next_child(					ChildT&							child)
 		{
 			return ParentBase_of<Base_in_list<ChildT, CHILD_TYPES>>::next_child(child);
 		}
 
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
-		const ChildT*			next_child(					const ChildT&				CHILD) const
+		const ChildT*			next_child(					const ChildT&					CHILD) const
 		{
 			return ParentBase_of<Base_in_list<ChildT, CHILD_TYPES>>::next_child(CHILD);
 		}
 
 		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		uint32_t				for_each_child(				const Invoke<ChildT>&		INVOKE_CHILD)
+		uint32_t				for_each_child(				const Invoke<ChildT>&			INVOKE_CHILD)
 		{
 			return ParentBase_of<ChildT>::for_each_child(INVOKE_CHILD);
 		}
 
 		template<dpl::is_one_of<CHILD_TYPES> ChildT>
-		uint32_t				for_each_child(				const InvokeConst<ChildT>&	INVOKE_CHILD) const
+		uint32_t				for_each_child(				const InvokeConst<ChildT>&		INVOKE_CHILD) const
 		{
 			return ParentBase_of<ChildT>::for_each_child(INVOKE_CHILD);
 		}
 
+		template<dpl::is_one_of<CHILD_TYPES> ChildT>
+		uint32_t				for_each_child_until(		const InvokeUntil<ChildT>&		INVOKE_CHILD)
+		{
+			return ParentBase_of<ChildT>::for_each_child_until(INVOKE_CHILD);
+		}
+
+		template<dpl::is_one_of<CHILD_TYPES> ChildT>
+		uint32_t				for_each_child_until(		const InvokeConstUntil<ChildT>&	INVOKE_CHILD) const
+		{
+			return ParentBase_of<ChildT>::for_each_child_until(INVOKE_CHILD);
+		}
+
 	protected:	// [FUNCTIONS]
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
-		bool					add_child(					ChildT&						child)
+		bool					add_child(					ChildT&							child)
 		{
 			return ParentBase_of<Base_in_list<ChildT, CHILD_TYPES>>::add_child(child);
 		}
 
 		template<is_one_of_base_types<CHILD_TYPES>	ChildT>
-		bool					remove_child(				ChildT&						child)
+		bool					remove_child(				ChildT&							child)
 		{
 			return ParentBase_of<Base_in_list<ChildT, CHILD_TYPES>>::remove_child(child);
 		}
@@ -1992,25 +2129,25 @@ namespace dpl
 		}
 
 		template<dpl::is_same_as<ParentT>		This = ParentT>
-		void					save_children_of_this(		BinaryState&				state) const
+		void					save_children_of_this(		BinaryState&					state) const
 		{
 			(ParentBase_of<ChildTn>::save_children(state), ...);
 		}
 
 		template<dpl::is_same_as<ParentT>		This = ParentT>
-		void					load_children_of_this(		BinaryState&				state)
+		void					load_children_of_this(		BinaryState&					state)
 		{
 			(ParentBase_of<ChildTn>::load_children(state), ...);
 		}
 
 	private:	// [FUNCTIONS]
-		void					save_relation_hierarchy(	BinaryState&				state) const
+		void					save_relation_hierarchy(	BinaryState&					state) const
 		{
 			MyPartnerBase::save_relation_hierarchy(state);
 			Parent::save_children_of_this(state);
 		}
 
-		void					load_relation_hierarchy(	BinaryState&				state)
+		void					load_relation_hierarchy(	BinaryState&					state)
 		{
 			MyPartnerBase::load_relation_hierarchy(state);
 			Parent::load_children_of_this(state);
@@ -2048,197 +2185,6 @@ namespace dpl
 		void					load_relation_hierarchy(	BinaryState&				state)
 		{
 			MyPartnerBase::load_relation_hierarchy(state);
-		}
-	};
-}
-
-// component storage		(internal)
-namespace dpl
-{
-	template<typename ComponentT>
-	concept is_Component			=  std::is_default_constructible_v<ComponentT>
-									&& std::is_copy_assignable_v<ComponentT>;
-
-	template<typename ComponentT>
-	concept is_StreamableComponent	=  is_Streamable<ComponentT>
-									&& is_Component<ComponentT>;
-
-	template<typename ComponentT>
-	struct	IsComponent
-	{
-		static const bool value = is_Component<ComponentT>;
-	};
-
-	template<typename COMPONENT_TYPES>
-	concept	is_ComponentTypeList	=  dpl::is_TypeList<COMPONENT_TYPES> 
-									&& COMPONENT_TYPES::ALL_UNIQUE 
-									&& COMPONENT_TYPES::template all<IsComponent>();
-
-	template<typename CompositeT, is_ComponentTypeList COMPONENT_TYPES>
-	class	ComponentTable;
-
-	template<typename CompositeT, typename... ComponentTn>
-	class	ComponentTable<CompositeT, dpl::TypeList<ComponentTn...>>
-	{
-	public: // subtypes
-		using	COMPONENT_TYPES = dpl::TypeList<ComponentTn...>;
-		using	Column			= std::tuple<ComponentTn*...>;
-		using	ConstColumn		= std::tuple<const ComponentTn*...>;
-
-		template<is_Component T>
-		using	ColumnStorage	= typename ArrayQuery<T, is_StreamableComponent<T>>::Type;
-
-		template<is_Component T>
-		class	Row	: private ColumnStorage<T>
-		{
-		private: // subtypes
-			using	MyStorageBase	= ColumnStorage<T>;
-
-		public: // subtypes
-			using	Invocation		= typename ColumnStorage<T>::Invocation;
-			using	ConstInvocation	= typename ColumnStorage<T>::ConstInvocation;
-
-		public: // constants
-			static constexpr bool IS_STREAMABLE = ArrayQuery<T, is_StreamableComponent<T>>::IS_STREAMABLE;
-
-		public: // friends
-			friend	MyStorageBase;
-			friend	ComponentTable;
-
-		public: // exposed functions
-			using	MyStorageBase::size;
-			using	MyStorageBase::index_of;
-
-		public: // lifecycle
-			CLASS_CTOR			Row() = default;
-			CLASS_CTOR			Row(				Row&&					other) noexcept = default;
-			Row&				operator=(			Row&&					other) noexcept = default;
-
-		private: // lifecycle (deleted)
-			CLASS_CTOR			Row(				const Row&				OTHER) = delete;
-			Row&				operator=(			const Row&				OTHER) = delete;
-
-		public: // functions
-			uint32_t			offset() const
-			{
-				if constexpr(IS_STREAMABLE)	return MyStorageBase::offset;
-				else							return 0;
-			}
-
-			T*					modify()
-			{
-				if constexpr(IS_STREAMABLE)	return MyStorageBase::modify();
-				else							return MyStorageBase::data();
-			}
-
-			const T*			read() const
-			{
-				if constexpr(IS_STREAMABLE)	return MyStorageBase::read();
-				else							return MyStorageBase::data();
-			}
-
-			void				modify_each(		const Invocation&		INVOKE)
-			{
-				if constexpr(IS_STREAMABLE)	return MyStorageBase::modify_each(INVOKE);
-				else							return MyStorageBase::for_each(INVOKE);
-			}
-
-			void				read_each(			const ConstInvocation&	INVOKE) const
-			{
-				if constexpr(IS_STREAMABLE)	return MyStorageBase::read_each(INVOKE);
-				else							return MyStorageBase::for_each(INVOKE);
-			}
-
-			T*					at(					const uint32_t			COLUMN_INDEX)
-			{
-				return modify() + COLUMN_INDEX;
-			}
-
-			const T*			at(					const uint32_t			COLUMN_INDEX) const
-			{
-				return read() + COLUMN_INDEX;
-			}
-
-			uint32_t			index_of(			const T*				COMPONENT_ADDRESS) const
-			{
-				return MyStorageBase::index_of(COMPONENT_ADDRESS);
-			}
-
-		private: // internal functions
-			T*					enlarge(			const uint32_t			NUM_COLUMNS)
-			{
-				return MyStorageBase::enlarge(NUM_COLUMNS);
-			}
-
-			void				destroy_at(			const uint32_t			COLUMN_INDEX)
-			{
-				MyStorageBase::fast_erase(COLUMN_INDEX);
-			}
-		};
-
-		using	Rows			= std::tuple<Row<ComponentTn>...>;
-
-	private: // data
-		Rows m_rows; //<-- Each row has the same size.
-
-	protected: // lifecycle
-		CLASS_CTOR					ComponentTable() = default;
-
-	public: // row functions
-		static constexpr uint32_t	numRows()
-		{
-			return COMPONENT_TYPES::SIZE;
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		Row<T>&						row()
-		{
-			return std::get<Row<T>>(m_rows);
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		const Row<T>&				row() const
-		{
-			return std::get<Row<T>>(m_rows);
-		}
-
-	public: // column functions
-		uint32_t					numColumns() const
-		{
-			using FirstComponentType = COMPONENT_TYPES::template At<0>;
-			return Row<FirstComponentType>::size();
-		}
-
-		Column						column(			const uint32_t		COLUMN_INDEX)
-		{
-			return std::make_tuple(ComponentTable::row<ComponentTn>().at(COLUMN_INDEX)...);
-		}
-
-		ConstColumn					column(			const uint32_t		COLUMN_INDEX) const
-		{
-			return std::make_tuple(ComponentTable::row<ComponentTn>().at(COLUMN_INDEX)...);
-		}
-
-		template<dpl::is_one_of<COMPONENT_TYPES> T>
-		uint32_t					column_index(	const T*			COMPONENT_ADDRESS) const
-		{
-			return ComponentTable::row<T>().index_of(COMPONENT_ADDRESS);
-		}
-
-	protected: // column functions
-		Column						add_columns(	const uint32_t		NUM_COLUMNS)
-		{
-			return std::make_tuple(ComponentTable::row<ComponentTn>().enlarge(NUM_COLUMNS)...);
-		}
-
-		Column						add_column()
-		{
-			return ComponentTable::add_columns(1);
-		}
-			
-		void						remove_column(	const uint32_t		COLUMN_INDEX)
-		{
-			(ComponentTable::row<ComponentTn>().destroy_at(COLUMN_INDEX), ...);
 		}
 	};
 }
@@ -2326,7 +2272,7 @@ namespace dpl
 			(
 				[&state](const Ts*... components)
 				{
-					(state.save(*components), ...);
+					(EntityT::save_component(*components, state), ...);
 
 				}, get_all_components()
 			);
@@ -2338,7 +2284,7 @@ namespace dpl
 			(
 				[&state](Ts*... components)
 				{
-					(state.load(*components), ...);
+					(EntityT::load_component(*components, state), ...);
 
 				}, get_all_components()
 			);
@@ -2349,6 +2295,22 @@ namespace dpl
 		{
 			if(PACK.typeID() != MyRelations::storageID()) throw dpl::GeneralException(this, __LINE__, "Components must be retrieved through final entity class.");
 			return PACK.index_of(static_cast<const EntityT*>(this));
+		}
+
+		// Override to save state of the specific component.
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		static void		save_component(					const T&				COMPONENT, 
+														BinaryState&			state)
+		{
+			state.save(COMPONENT);
+		}
+
+		// Override to load state of the specific component.
+		template<dpl::is_one_of<COMPONENT_TYPES> T>
+		static void		load_component(					T&						component, 
+														BinaryState&			state)
+		{
+			state.load(component);
 		}
 	};
 }
@@ -2413,7 +2375,7 @@ namespace dpl
 
 		[COMPOSITION]:
 		- A separate, contiguous buffer is allocated to store each type of component.
-		- Linking the buffer that stores a component type to the StreamController object is possible if the component type satisfies the requirements for streamable data.
+		- Linking the buffer that stores a component type to the Stream object is possible if the component type satisfies the requirements for streamable data.
 		- The component types specified in the entity description are combined with those inherited from the Base.
 		- To meet the requirement, non-trivially destructible components must have operator>>(std::ostream&) and operator<<(std::istream&) implemented.
 	*/
@@ -2429,7 +2391,7 @@ namespace dpl
 	private:	// [SUBTYPES]
 		using	MyComposition = MaybeComposite<EntityT, AllComponentTypes_of<EntityT>>;
 
-	protected:	// [INHERITED
+	protected:	// [INHERITED]
 		using	MyComposition::MyComposition;
 
 	protected:	// [LIFECYCLE]	
@@ -2441,12 +2403,6 @@ namespace dpl
 		Entity&					operator=(	const Entity&	OTHER) = delete;
 
 	public:		// [FUNCTIONS]
-		// Override to save state of the EntityT members.
-		void					save_state(	BinaryState&	state) const {}
-
-		// Override to load state of the EntityT members.
-		void					load_state(	BinaryState&	state) {}
-
 		bool					has_known_storage() const
 		{
 			return MyComposition::storageID() == EntityPack_of<EntityT>::ref().typeID();
@@ -2480,21 +2436,27 @@ namespace dpl
 		}
 
 	private:	// [FUNCTIONS]
+		// Override to save state of the EntityT members.
+		void					save_state(	BinaryState&	state) const {}
+
+		// Override to load state of the EntityT members.
+		void					load_state(	BinaryState&	state) {}
+
 		void					save(		BinaryState&	state) const
 		{
-			if constexpr (has_Base<EntityT>) Base_of<EntityT>::save(state);
+			if constexpr (has_Base<EntityT>) Entity<Base_of<EntityT>>::save(state);
 			static_cast<const EntityT&>(*this).save_state(state);
 		}
 
 		void					load(		BinaryState&	state)
 		{
-			if constexpr (has_Base<EntityT>) Base_of<EntityT>::load(state);
+			if constexpr (has_Base<EntityT>) Entity<Base_of<EntityT>>::load(state);
 			static_cast<EntityT&>(*this).load_state(state);
 		}
 	};
 
 
-#define DEFINE_SIMPLE_ENTITY(EntityT) class EntityT : public dpl::Entity<EntityT>{public: using Entity::Entity;}
+#define DEFINE_SIMPLE_ENTITY(EntityT) class EntityT : public dpl::Entity<EntityT>{public: EntityT(const dpl::Origin& ORIGIN) : Entity(ORIGIN){}}
 }
 
 // storage implementation	(internal)
@@ -2541,7 +2503,7 @@ namespace dpl
 
 			MyGroupT::for_each([&](EntityStorageNode<EntityT>& node)
 			{
-				node.for_each<BaseEntityT>(INVOKE);
+				node.call_recursively_for<BaseEntityT>(INVOKE);
 			});
 		}
 	};
@@ -2569,17 +2531,6 @@ namespace dpl
 		using	MyComponentTable	= MaybeComponentTable<EntityT>;
 		using	MyNodeBase			= EntityStorageNode<EntityT>;
 
-	public:		// [SUBTYPES]
-		using	EntityIndex					= uint32_t;
-		using	NumEntities					= uint32_t;
-		using	InvokeEntity				= std::function<void(EntityT&)>;
-		using	InvokeEntityBuffer			= std::function<void(EntityT*, NumEntities)>;
-		using	InvokeConstEntity			= std::function<void(const EntityT&)>;
-		using	InvokeConstEntityBuffer		= std::function<void(const EntityT*, NumEntities)>;
-		using	InvokeIndexedEntity			= std::function<void(EntityT&, EntityIndex)>;
-		using	InvokeConstIndexedEntity	= std::function<void(const EntityT&, EntityIndex)>;
-		using	InvokeSimilarEntityBuffer	= std::function<void(EntityPackView<EntityT>&)>;
-
 	public:		// [FRIENDS]
 		friend	EntityManager;
 		friend  Entity<EntityT>;
@@ -2596,7 +2547,7 @@ namespace dpl
 		std::vector<EntityT>					m_entities;
 
 	public:		// [LIFECYCLE]
-		CLASS_CTOR					EntityPack_of(				const Binding&							BINDING)
+		CLASS_CTOR					EntityPack_of(				const Binding&										BINDING)
 			: EntityPack(BINDING)
 			, MySingletonBase(static_cast<EntityManager*>(BINDING.owner())->owner())
 			, typeID(EntityPack::get_typeID<EntityPack_of<EntityT>>())
@@ -2605,9 +2556,7 @@ namespace dpl
 		}
 
 	public:		// [BASIC]
-
-
-		void						reserve_additional_space(	const uint32_t							AMOUNT)
+		void						reserve_additional_space(	const uint32_t										AMOUNT)
 		{
 			const uint32_t NEW_CAPACITY = m_entities.size() + AMOUNT;
 			m_labeler.reserve(NEW_CAPACITY);
@@ -2615,19 +2564,19 @@ namespace dpl
 			// NOTE: Component buffers are self regulated.
 		}
 
-		EntityT&					create(						const Name&								ENTITY_NAME)
+		EntityT&					create(						const Name&											ENTITY_NAME)
 		{
 			if constexpr (is_Composite<EntityT>) MyComponentTable::add_column();
 			return m_entities.emplace_back(Origin(ENTITY_NAME, typeID(), m_labeler));
 		}
 
-		EntityT&					create(						const Name::Type&						NAME_TYPE,
-																const std::string&						NAME)
+		EntityT&					create(						const Name::Type&									NAME_TYPE,
+																const std::string&									NAME)
 		{
 			return create(Name(NAME_TYPE, NAME));
 		}
 
-		bool						destroy_at(					uint64_t								index)
+		bool						destroy_at(					uint64_t											index)
 		{
 			if(index >= m_entities.size()) return false;
 			std::invoke([&]<typename... ChildTs>(dpl::TypeList<ChildTs...> DUMMY)
@@ -2660,12 +2609,12 @@ namespace dpl
 			return true;
 		}
 
-		bool						destroy(					const EntityT&							ENTITY)
+		bool						destroy(					const EntityT&										ENTITY)
 		{
 			return destroy_at(dpl::get_element_index(m_entities, ENTITY));
 		}
 
-		bool						destroy(					const std::string&						NAME)
+		bool						destroy(					const std::string&									NAME)
 		{
 			const auto* ENTITY = find(NAME);
 			if(!ENTITY) return false;
@@ -2678,60 +2627,60 @@ namespace dpl
 			return (uint32_t)m_entities.size();
 		}
 
-		uint32_t					index_of(					const EntityT*							ENTITY) const
+		uint32_t					index_of(					const EntityT*										ENTITY) const
 		{
 			const uint64_t INDEX64 = dpl::get_element_index(m_entities, ENTITY);
 			return (INDEX64 > EntityPack::INVALID_INDEX) ? EntityPack::INVALID_INDEX : (uint32_t)INDEX64;
 		}
 
-		bool						contains(					const uint32_t							ENTITY_INDEX) const
+		bool						contains(					const uint32_t										ENTITY_INDEX) const
 		{
 			return ENTITY_INDEX < size();
 		}
 
-		bool						contains(					const EntityT*							ENTITY) const
+		bool						contains(					const EntityT*										ENTITY) const
 		{
 			return EntityPack_of::contains(index_of(ENTITY));
 		}
 
-		EntityT*					find(						const std::string&						ENTITY_NAME)
+		EntityT*					find(						const std::string&									ENTITY_NAME)
 		{
 			EntityT* entity = static_cast<EntityT*>(m_labeler.find_entry(ENTITY_NAME));
 			return EntityPack_of::contains(entity)? entity : nullptr;
 		}
 
-		const EntityT*				find(						const std::string&						ENTITY_NAME) const
+		const EntityT*				find(						const std::string&									ENTITY_NAME) const
 		{
 			const EntityT* ENTITY = static_cast<const EntityT*>(m_labeler.find_entry(ENTITY_NAME));
 			return EntityPack_of::contains(ENTITY)? ENTITY : nullptr;
 		}
 
-		EntityT*					find(						const uint32_t							ENTITY_INDEX)
+		EntityT*					find(						const uint32_t										ENTITY_INDEX)
 		{
 			return m_entities.data() + ENTITY_INDEX;
 		}
 			
-		const EntityT*				find(						const uint32_t							ENTITY_INDEX) const
+		const EntityT*				find(						const uint32_t										ENTITY_INDEX) const
 		{
 			return m_entities.data() + ENTITY_INDEX;
 		}
 
-		EntityT&					get(						const std::string&						ENTITY_NAME)
+		EntityT&					get(						const std::string&									ENTITY_NAME)
 		{
 			return *find(ENTITY_NAME);
 		}
 
-		const EntityT&				get(						const std::string&						ENTITY_NAME) const
+		const EntityT&				get(						const std::string&									ENTITY_NAME) const
 		{
 			return *find(ENTITY_NAME);
 		}
 
-		EntityT&					get(						const uint32_t							ENTITY_INDEX)
+		EntityT&					get(						const uint32_t										ENTITY_INDEX)
 		{
 			return m_entities[ENTITY_INDEX];
 		}
 
-		const EntityT&				get(						const uint32_t							ENTITY_INDEX) const
+		const EntityT&				get(						const uint32_t										ENTITY_INDEX) const
 		{
 			return m_entities[ENTITY_INDEX];
 		}
@@ -2746,7 +2695,7 @@ namespace dpl
 			return m_entities.back();
 		}
 
-		uint32_t					guess_ID_from_byte(			const char*								ENTITY_MEMBER_PTR) const
+		uint32_t					guess_ID_from_byte(			const char*											ENTITY_MEMBER_PTR) const
 		{
 			static const uint64_t	STRIDE			= sizeof(EntityT);
 			const char*				BEGIN			= reinterpret_cast<const char*>(m_entities.data());
@@ -2758,7 +2707,7 @@ namespace dpl
 			return (uint32_t)(BYTE_OFFSET / STRIDE);
 		}
 
-		bool						is_inherited_ID(			const uint32_t							TYPE_ID) const
+		bool						is_inherited_ID(			const uint32_t										TYPE_ID) const
 		{
 			if(typeID() == TYPE_ID) return true;
 			if constexpr (has_Base<EntityT>)
@@ -2770,27 +2719,17 @@ namespace dpl
 		}
 
 	public:		// [ITERATION]
-		void						for_each(					const InvokeEntity&						INVOKE)
+		void						for_each(					const InvokeEntity<EntityT>&						INVOKE)
 		{
 			std::for_each(m_entities.begin(), m_entities.end(), INVOKE);
 		}
 
-		void						for_each(					const InvokeEntityBuffer&				INVOKE)
-		{
-			INVOKE(m_entities.data(), size());
-		}
-
-		void						for_each(					const InvokeConstEntity&				INVOKE) const
+		void						for_each(					const InvokeConstEntity<EntityT>&					INVOKE) const
 		{
 			std::for_each(m_entities.begin(), m_entities.end(), INVOKE);
 		}
 
-		void						for_each(					const InvokeConstEntityBuffer&			INVOKE) const
-		{
-			INVOKE(m_entities.data(), size());
-		}
-
-		void						for_each(					const InvokeIndexedEntity&				INVOKE)
+		void						for_each(					const InvokeIndexedEntity<EntityT>&					INVOKE)
 		{
 			const uint32_t SIZE = size();
 			for(uint32_t index = 0; index < SIZE; ++index)
@@ -2799,7 +2738,7 @@ namespace dpl
 			}
 		}
 
-		void						for_each(					const InvokeConstIndexedEntity&			INVOKE)
+		void						for_each(					const InvokeConstIndexedEntity<EntityT>&			INVOKE)
 		{
 			const uint32_t SIZE = size();
 			for(uint32_t index = 0; index < SIZE; ++index)
@@ -2808,44 +2747,142 @@ namespace dpl
 			}
 		}
 
-		void						for_each(					const InvokeSimilarEntityBuffer&		INVOKE) final override
+		void						for_each(					const InvokeEntityBuffer<EntityT>&					INVOKE)
+		{
+			INVOKE(m_entities.data(), size());
+		}
+
+		void						for_each(					const InvokeConstEntityBuffer<EntityT>&				INVOKE) const
+		{
+			INVOKE(m_entities.data(), size());
+		}
+
+		void						for_each(					const InvokeSimilarEntityBuffer<EntityT>&			INVOKE)
 		{
 			MyNodeBase::call_recursively_for<EntityT>(INVOKE);
 		}
 
+	public:		// [PARALLEL ITERATION]
+		void						for_each_in_parallel(		dpl::ParallelPhase&									phase,
+																const InvokeEntity<EntityT>&						INVOKE)
+		{
+			dpl::IndexRange<>(0, size()).for_each_split(phase.numJobs(), [&](const auto RANGE_OF_ENTITIES)
+			{
+				phase.add_task(RANGE_OF_ENTITIES.size(), [&, RANGE_OF_ENTITIES]()
+				{
+					RANGE_OF_ENTITIES.for_each([&](const uint32_t INDEX)
+					{
+						INVOKE(m_entities[INDEX]);
+					});
+				});
+			});
+		
+			phase.start();
+		}
+
+		void						for_each_in_parallel(		dpl::ParallelPhase&									phase,
+																const InvokeConstEntity<EntityT>&					INVOKE) const
+		{
+			dpl::IndexRange<>(0, size()).for_each_split(phase.numJobs(), [&](const auto RANGE_OF_ENTITIES)
+			{
+				phase.add_task(RANGE_OF_ENTITIES.size(), [&, RANGE_OF_ENTITIES]()
+				{
+					RANGE_OF_ENTITIES.for_each([&](const uint32_t INDEX)
+					{
+						INVOKE(m_entities[INDEX]);
+					});
+				});
+			});
+		
+			phase.start();
+		}
+
+		void						for_each_in_parallel(		dpl::ParallelPhase&									phase,
+																const InvokeIndexedEntity<EntityT>&					INVOKE)
+		{
+			dpl::IndexRange<>(0, size()).for_each_split(phase.numJobs(), [&](const auto RANGE_OF_ENTITIES)
+			{
+				phase.add_task(RANGE_OF_ENTITIES.size(), [&, RANGE_OF_ENTITIES]()
+				{
+					RANGE_OF_ENTITIES.for_each([&](const uint32_t INDEX)
+					{
+						INVOKE(m_entities[INDEX], INDEX);
+					});
+				});
+			});
+		
+			phase.start();
+		}
+
+		void						for_each_in_parallel(		dpl::ParallelPhase&									phase,
+																const InvokeConstIndexedEntity<EntityT>&			INVOKE)
+		{
+			dpl::IndexRange<>(0, size()).for_each_split(phase.numJobs(), [&](const auto RANGE_OF_ENTITIES)
+			{
+				phase.add_task(RANGE_OF_ENTITIES.size(), [&, RANGE_OF_ENTITIES]()
+				{
+					RANGE_OF_ENTITIES.for_each([&](const uint32_t INDEX)
+					{
+						INVOKE(m_entities[INDEX], INDEX);
+					});
+				});
+			});
+		
+			phase.start();
+		}
+
+		void						for_each_in_parallel(		dpl::ParallelPhase&									phase,
+																const InvokeSimilarIndexedEntityBuffer<EntityT>&	INVOKE)
+		{
+			EntityPack_of::for_each([&](dpl::EntityPackView<EntityT>& view)
+			{
+				dpl::IndexRange<>(0, view.numEntities()).for_each_split(phase.numJobs(), [&](const auto RANGE_OF_ENTITIES)
+				{
+					phase.add_task(RANGE_OF_ENTITIES.size(), [&, RANGE_OF_ENTITIES]()
+					{
+						RANGE_OF_ENTITIES.for_each([&](const uint32_t INDEX)
+						{
+							INVOKE(view, INDEX);
+						});
+					});
+				});
+			});
+		
+			phase.start();
+		}
 	public:		// [IO]
-		void						save_entity(				const Entity<EntityT>&					ENTITY,
-																BinaryState&							state) const
+		void						save_entity(				const Entity<EntityT>&								ENTITY,
+																BinaryState&										state) const
 		{
 			if(!EntityPack_of::contains(static_cast<const EntityT*>(&ENTITY))) 
 				throw dpl::GeneralException(this, __LINE__, "Fail to save. Invalid entity: %s", ENTITY.name().c_str());
 
 			ENTITY.save(state);
 			if constexpr(is_Composite<EntityT>) ENTITY.save_components_to_binary(state);
-			ENTITY.save_all_relations(state);
+			ENTITY.save_relation_hierarchy(state);
 		}
 
-		const EntityT&				save_entity(				const std::string&						ENTITY_NAME,
-																BinaryState&							state) const
+		const EntityT&				save_entity(				const std::string&									ENTITY_NAME,
+																BinaryState&										state) const
 		{
 			const EntityT& ENTITY = get(ENTITY_NAME);
 			EntityPack_of::save_entity(ENTITY, state);
 			return ENTITY;
 		}
 
-		void						load_entity(				Entity<EntityT>&						entity,
-																BinaryState&							state)
+		void						load_entity(				Entity<EntityT>&									entity,
+																BinaryState&										state)
 		{
 			if(!EntityPack_of::contains(static_cast<EntityT*>(&entity)))
 				throw dpl::GeneralException(this, __LINE__, "Fail to load. Invalid entity: %s", entity.name().c_str());
 
 			entity.load(state);
 			if constexpr(is_Composite<EntityT>) entity.load_components_from_binary(state);
-			entity.load_all_relations(state);
+			entity.load_relation_hierarchy(state);
 		}
 
-		EntityT&					load_entity(				const std::string&						ENTITY_NAME,
-																BinaryState&							state)
+		EntityT&					load_entity(				const std::string&									ENTITY_NAME,
+																BinaryState&										state)
 		{
 			EntityT& entity = get(ENTITY_NAME);
 			EntityPack_of::load_entity(entity, state);
@@ -2859,27 +2896,27 @@ namespace dpl
 			return TYPE_NAME;
 		}
 
-		virtual const Identity*		find_identity(				const std::string&						ENTITY_NAME) const final override
+		virtual const Identity*		find_identity(				const std::string&									ENTITY_NAME) const final override
 		{
 			return find(ENTITY_NAME);
 		}
 
-		virtual const Identity*		find_and_verify_identity(	const std::string&						ENTITY_NAME,
-																const uint32_t							TYPE_ID) const final override
+		virtual const Identity*		find_and_verify_identity(	const std::string&									ENTITY_NAME,
+																const uint32_t										TYPE_ID) const final override
 		{
 			if(!is_inherited_ID(TYPE_ID)) return nullptr;
 			return find(ENTITY_NAME);
 		}
 
-		virtual const Identity&		guess_identity_from_byte(	const char*								ENTITY_MEMBER_BYTE_PTR) const final override
+		virtual const Identity&		guess_identity_from_byte(	const char*											ENTITY_MEMBER_BYTE_PTR) const final override
 		{
 			const uint32_t ENTITY_ID = guess_ID_from_byte(ENTITY_MEMBER_BYTE_PTR);
 			return (ENTITY_ID != EntityPack::INVALID_ENTITY_ID)? get(ENTITY_ID) : EntityManager::ref().false_identity();
 		}
 
-		virtual void				for_each_dependent_child(	const std::string&						ENTITY_NAME,
-																const Dependency						DEPENDENCY,
-																const InvokeIdentity&					INVOKE) const final override
+		virtual void				for_each_dependent_child(	const std::string&									ENTITY_NAME,
+																const Dependency									DEPENDENCY,
+																const InvokeIdentity&								INVOKE) const final override
 		{
 			const EntityT& ENTITY = get(ENTITY_NAME);
 
@@ -2901,19 +2938,19 @@ namespace dpl
 		}
 
 	private:	// [IMPLEMENTATION]
-		virtual bool				destroy_around(				const char*								ENTITY_MEMBER_BYTE_PTR) final override
+		virtual bool				destroy_around(				const char*											ENTITY_MEMBER_BYTE_PTR) final override
 		{
 			const uint32_t ENTITY_ID = guess_ID_from_byte(ENTITY_MEMBER_BYTE_PTR);
 			return (ENTITY_ID != EntityPack::INVALID_ENTITY_ID)? destroy_at(ENTITY_ID) : false;
 		}
 
-		virtual char*				get_entity_as_bytes(		const std::string&						ENTITY_NAME) final override
+		virtual char*				get_entity_as_bytes(		const std::string&									ENTITY_NAME) final override
 		{
 			Entity<EntityT>* entity = find(ENTITY_NAME);
 			return entity? reinterpret_cast<char*>(entity) : nullptr;
 		}
 
-		virtual char*				get_base_entity_as_bytes(	const std::string&						ENTITY_NAME) final override
+		virtual char*				get_base_entity_as_bytes(	const std::string&									ENTITY_NAME) final override
 		{
 			RootBase_of<EntityT>* entity = find(ENTITY_NAME);
 			return entity? reinterpret_cast<char*>(entity) : nullptr;
@@ -2921,17 +2958,17 @@ namespace dpl
 
 		virtual void				destroy_all_entities() final override
 		{
-			m_entities.resize(0);
+			m_entities.clear();
 		}
 
-		virtual void				save_and_destroy(			const std::string&						ENTITY_NAME,
-																BinaryState&							state) final override
+		virtual void				save_and_destroy(			const std::string&									ENTITY_NAME,
+																BinaryState&										state) final override
 		{
 			EntityPack_of::destroy(save_entity(ENTITY_NAME, state));
 		}
 
-		virtual void				create_and_load(			const std::string&						ENTITY_NAME,
-																BinaryState&							state) final override
+		virtual void				create_and_load(			const std::string&									ENTITY_NAME,
+																BinaryState&										state) final override
 		{
 			EntityPack_of::load_entity(create(Name::UNIQUE, ENTITY_NAME), state);
 		}
@@ -2947,6 +2984,9 @@ namespace dpl
 
 	public:		// [FRIENDS]
 		template<typename>
+		friend class EntityStorageNode;
+
+		template<typename>
 		friend class EntityPack_of;
 
 	private:	// [DATA]
@@ -2960,7 +3000,7 @@ namespace dpl
 	private:		// [LIFECYCLE]
 		template<typename DerivedEntityT>
 		CLASS_CTOR		EntityPackView(			EntityPack_of<DerivedEntityT>&	pack)
-			: rawEntityBuffer(reinterpret_cast<uint8_t*>(pack.find()) + dpl::base_offset<EntityT, DerivedEntityT>())
+			: rawEntityBuffer(reinterpret_cast<uint8_t*>(pack.find(0)) + dpl::base_offset<EntityT, DerivedEntityT>())
 			, stride(sizeof(DerivedEntityT))
 			, numEntities(pack.size())
 		{
@@ -2971,7 +3011,7 @@ namespace dpl
 					address = pack.row<T>().modify();
 				};
 
-				std::invoke([&]<typename... ComponentTs>(std::tuple<ComponentTs*>& components)
+				std::invoke([&]<typename... ComponentTs>(std::tuple<ComponentTs*...>& components)
 				{
 					(..., set_address(std::get<ComponentTs*>(components)));
 
