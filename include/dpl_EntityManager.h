@@ -841,7 +841,7 @@ namespace dpl
 	};
 
 
-	const std::string&	Identity::get_typeName() const
+	inline const std::string&	Identity::get_typeName() const
 	{
 		EntityPack* pack = EntityManager::ref().find_base_variant(storageID());
 		return pack? pack->get_entity_typeName() : "??unknown_entity_type??";
