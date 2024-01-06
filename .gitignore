@@ -1,6 +1,6 @@
 # Folders
-debug/intermediate/
-release/intermediate/
+debug/
+release/
 
 # Prerequisites
 *.d
