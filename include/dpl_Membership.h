@@ -26,7 +26,7 @@ namespace dpl
 	template<typename GroupT, typename MemberT, uint32_t ID>
 	class Member : private Sequenceable<MemberT, ID>
 	{
-	protected:	// [SUBTYPES]
+	public:	// [SUBTYPES]
 		using	MyBase		= Sequenceable<MemberT, ID>;
 		using	MySequence	= Sequence<MemberT, ID>;
 		using	MyLink		= Link<MemberT, ID>;
@@ -170,7 +170,7 @@ namespace dpl
 	template<typename GroupT, typename MemberT, uint32_t ID>
 	class Group : public Sequence<MemberT, ID>
 	{
-	protected:	// [SUBTYPES]
+	public:		// [SUBTYPES]
 		using	MyBase		= Sequence<MemberT, ID>;
 		using	MyMember	= Member<GroupT, MemberT, ID>;
 

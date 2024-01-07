@@ -9,6 +9,8 @@
 #include "dpl_std_addons.h"
 #include "dpl_Logger.h"
 #include "dpl_ComponentManager.h"
+
+
 #include "dpl_Command.h"
 
 
@@ -37,9 +39,6 @@ namespace dpl
 	class	Entity;
 
 	class	EntityPack;
-
-	template<typename EntityT>
-	class	EntityStorageNode;
 
 	template<typename EntityT>
 	class	EntityPack_of;
@@ -131,7 +130,8 @@ namespace dpl
 	using	Base_in_list			=  ENTITY_TYPES::template Subtypes<IsDerived<T>::template EntityType>::template At<0>;
 
 	template<typename EntityT>
-	concept has_Base				= !std::is_same_v<Base_of<EntityT>, EntityT>;
+	concept has_Base				= !std::is_same_v<Base_of<EntityT>, void> 
+								   && !std::is_same_v<Base_of<EntityT>, EntityT>;
 }
 
 // queries					(internal)
@@ -284,14 +284,6 @@ namespace dpl
 									const std::string_view	STR)
 			: type(TYPE)
 			, str(STR.data(), STR.size())
-		{
-
-		}
-
-		CLASS_CTOR		Name(		const Type				TYPE,
-									const std::string&		STR)
-			: type(TYPE)
-			, str(STR)
 		{
 
 		}
@@ -550,9 +542,17 @@ namespace dpl
 
 
 	class	EntityManager	: public dpl::Singleton<EntityManager>
-							, public dpl::Variation<EntityManager, EntityPack>
+							, private dpl::Variation<EntityManager, EntityPack>
 							, private dpl::StaticHolder<Identity, EntityManager>
 	{
+	public:		// [FRIENDS]
+		friend EntityPack;
+		friend Identity;
+
+		template<typename>
+		friend class EntityPack_of;
+
+#ifdef USE_COMMANDS_TO_MANAGE_ENTITIES
 	public:		// [COMMANDS]
 		template<typename T>
 		class	CommandGroupOf;
@@ -599,6 +599,7 @@ namespace dpl
 
 	private:	// [DATA]
 		BinaryInvoker m_invoker;
+#endif
 
 	public:		// [LIFECYCLE]
 		CLASS_CTOR				EntityManager(				dpl::Multition&								multition)
@@ -612,6 +613,7 @@ namespace dpl
 			dpl::no_except([&](){	destroy_all_entities();	});
 		}
 
+#ifdef USE_COMMANDS_TO_MANAGE_ENTITIES
 	public:		// [COMMAND FUNCTIONS]
 		void					undo_command()
 		{
@@ -633,15 +635,6 @@ namespace dpl
 		{
 			EntityManager::assure_pack_of<T>();
 			m_invoker.invoke<CMD_Create<T>>(NAME);
-			return EntityPack_of<T>::ref().last();
-		}
-
-		template<is_Entity T>
-		T&						cmd_create(					const Name::Type							TYPE,
-															const std::string&							STR)
-		{
-			EntityManager::assure_pack_of<T>();
-			m_invoker.invoke<CMD_Create<T>>(TYPE, STR);
 			return EntityPack_of<T>::ref().last();
 		}
 
@@ -733,6 +726,52 @@ namespace dpl
 			m_invoker.invoke<CMD_DisinvolveAll<EntityT>>(ENTITY);
 		}
 
+#else
+	public:		// [ENTITY MANAGEMENT]
+		template<is_Entity T>
+		T&						create(						const Name									NAME)
+		{
+			EntityManager::assure_pack_of<T>();
+			return EntityPack_of<T>::ref().create(NAME);
+		}
+
+		template<is_Entity T>
+		T&						create(						const Name::Type							TYPE,
+															const std::string_view						STR)
+		{
+			EntityManager::assure_pack_of<T>();
+			return EntityPack_of<T>::ref().create(TYPE, STR);
+		}
+
+		template<is_Entity T>
+		bool					destroy_at(					const uint64_t								INDEX)
+		{
+			EntityManager::assure_pack_of<T>();
+			return EntityPack_of<T>::ref().destroy_at(INDEX);
+		}
+
+		template<is_Entity T>
+		bool					destroy(					const T&									ENTITY)
+		{
+			EntityManager::assure_pack_of<T>();
+			return EntityPack_of<T>::ref().destroy(ENTITY);
+		}
+
+		template<is_Entity T>
+		bool					destroy(					const std::string&							NAME)
+		{
+			EntityManager::assure_pack_of<T>();
+			return EntityPack_of<T>::ref().destroy(NAME);
+		}
+
+		template<is_Entity T>
+		bool					destroy_all()
+		{
+			EntityManager::assure_pack_of<T>();
+			return EntityPack_of<T>::ref().destroy_all();
+		}
+#endif
+
 	public:		// [ITERATION]
 		template<is_Entity T>
 		void					for_each(					const InvokeEntity<T>&						INVOKE)
@@ -818,13 +857,13 @@ namespace dpl
 			return StaticHolder::data;
 		}
 
+	private:	// [INTERNAL FUNCTIONS]
 		template<is_Entity T>
 		bool					create_EntityPack_of()
 		{
 			return Variation::create_variant<EntityPack_of<T>>();
 		}
 
-	private:	// [INTERNAL FUNCTIONS]
 		template<is_Entity T>
 		void					assure_pack_of()
 		{
@@ -2462,21 +2501,23 @@ namespace dpl
 // storage implementation	(internal)
 namespace dpl
 {
-	// CRT Pattern
 	template<typename EntityT>
-	class	EntityStorageNode	: private Member<EntityStorageNode<Base_of<EntityT>>, EntityStorageNode<Base_of<EntityT>>>
+	using	NodeT = std::conditional_t<has_Base<EntityT>, Base_of<EntityT>, EntityT>;
+
+	template<typename EntityT>
+	class	EntityStorageNode	: private Member<EntityStorageNode<NodeT<EntityT>>, EntityStorageNode<NodeT<EntityT>>>
 								, private Group<EntityStorageNode<EntityT>, EntityStorageNode<EntityT>>
 	{
 	private:	// [SUBTYPES]
-		using	MyMemberT	= Member<EntityStorageNode<Base_of<EntityT>>, EntityStorageNode<Base_of<EntityT>>>;
-		using	MyGroupT	= Group<EntityStorageNode<EntityT>, EntityStorageNode<EntityT>>;
+		using	MyMembershipT	= Member<EntityStorageNode<NodeT<EntityT>>, EntityStorageNode<NodeT<EntityT>>>;
+		using	MyGroupT		= Group<EntityStorageNode<EntityT>, EntityStorageNode<EntityT>>;	
 
 	public:		// [FRIENDS]
-		friend	MyMemberT;
-		friend	MyMemberT::MySequence;
-		friend	MyMemberT::MyLink;
-		friend	MyMemberT::MyGroup;
-		friend	MyMemberT::MyBase;
+		friend	MyMembershipT;
+		friend	MyMembershipT::MySequence;
+		friend	MyMembershipT::MyLink;
+		friend	MyMembershipT::MyGroup;
+		friend	MyMembershipT::MyBase;
 		friend	MyGroupT;
 		
 		template<typename>
@@ -2619,6 +2660,16 @@ namespace dpl
 			const auto* ENTITY = find(NAME);
 			if(!ENTITY) return false;
 			return EntityPack_of::destroy(*ENTITY);
+		}
+
+		bool						destroy_all()
+		{
+			if (size() == 0) return false;
+			while (size() > 0)
+			{
+				destroy_at(size()-1);
+			}
+			return true;
 		}
 
 	public:		// [QUERY]
@@ -2983,8 +3034,8 @@ namespace dpl
 		using	ComponentArrays	= typename ComponentTypes::PtrPack;
 
 	public:		// [FRIENDS]
-		template<typename>
-		friend class EntityStorageNode;
+		template<typename, bool>
+		friend class EntityStorageNode_t;
 
 		template<typename>
 		friend class EntityPack_of;
@@ -3062,6 +3113,7 @@ namespace dpl
 	};
 }
 
+#ifdef USE_COMMANDS_TO_MANAGE_ENTITIES
 // commands					(internal)
 namespace dpl
 {
@@ -3675,5 +3727,6 @@ namespace dpl
 		m_invoker.invoke<CMD_Rename>(ENTITY, TYPE, STR);
 	}
 }
+#endif
 
 #pragma pack(pop)
